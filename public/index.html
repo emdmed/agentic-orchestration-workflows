@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agentic scripts</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 4rem 1.5rem;
+    }
+    main { max-width: 520px; width: 100%; }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 400;
+      color: #fff;
+      margin-bottom: 0.4rem;
+    }
+    .subtitle {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 3rem;
+    }
+    section { margin-bottom: 2rem; }
+    h2 {
+      font-size: 0.7rem;
+      font-weight: 400;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #555;
+      margin-bottom: 0.6rem;
+    }
+    ul { list-style: none; }
+    li { margin-bottom: 0.25rem; }
+    a {
+      color: #8b8b8b;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.15s;
+    }
+    a:hover { color: #fff; }
+    .usage {
+      margin-top: 3rem;
+      padding-top: 2rem;
+      border-top: 1px solid #1a1a1a;
+    }
+    .usage code {
+      display: block;
+      font-size: 0.8rem;
+      color: #555;
+      margin-top: 0.4rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>agentic scripts</h1>
+    <p class="subtitle">workflows and scripts served as plain text for ai agents</p>
+
+    <section>
+      <h2>orchestration</h2>
+      <ul>
+        <li><a href="/orchestration/orchestration.md">/orchestration/orchestration.md</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>workflows / react</h2>
+      <ul>
+        <li><a href="/orchestration/workflows/react/feature.md">/workflows/react/feature.md</a></li>
+        <li><a href="/orchestration/workflows/react/bugfix.md">/workflows/react/bugfix.md</a></li>
+        <li><a href="/orchestration/workflows/react/refactor.md">/workflows/react/refactor.md</a></li>
+        <li><a href="/orchestration/workflows/react/performance.md">/workflows/react/performance.md</a></li>
+        <li><a href="/orchestration/workflows/react/review.md">/workflows/react/review.md</a></li>
+        <li><a href="/orchestration/workflows/react/pr.md">/workflows/react/pr.md</a></li>
+        <li><a href="/orchestration/workflows/react/docs.md">/workflows/react/docs.md</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>workflows / general</h2>
+      <ul>
+        <li><a href="/orchestration/workflows/todo.md">/workflows/todo.md</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>tools</h2>
+      <ul>
+        <li><a href="/tools/search.js">/tools/search.js</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>utils</h2>
+      <ul>
+        <li><a href="/utils/fetch.js">/utils/fetch.js</a></li>
+      </ul>
+    </section>
+
+    <div class="usage">
+      <h2>usage</h2>
+      <code>curl https://your-domain.vercel.app/orchestration/workflows/react/feature.md</code>
+    </div>
+  </main>
+</body>
+</html>
