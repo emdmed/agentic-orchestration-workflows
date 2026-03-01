@@ -8,7 +8,7 @@
 // Usage:
 //   node compaction.js [path] [--json]
 
-import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, join, basename, dirname } from 'path';
 
@@ -572,8 +572,10 @@ for (const arg of args) {
 targetPath = resolve(targetPath);
 const { output, stats } = compactProject(targetPath);
 const dirName = basename(targetPath);
+const outDir = join(targetPath, '.orchestration', 'tools');
+mkdirSync(outDir, { recursive: true });
 const filename = `compacted_${dirName}_${getDateStamp()}.md`;
-const outputPath = join(targetPath, filename);
+const outputPath = join(outDir, filename);
 const sha = getGitSha(targetPath);
 const outputWithSha = `git-sha: ${sha}\n${output}`;
 

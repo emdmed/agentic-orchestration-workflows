@@ -7,7 +7,7 @@
 // Usage:
 //   node dep-graph.js [path]
 
-import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, join, basename, dirname, relative, extname } from 'path';
 
@@ -305,8 +305,10 @@ const { forward, reverse, externals } = buildGraph(files, targetPath);
 const cycles = detectCycles(forward);
 const output = formatMarkdown(projectName, forward, reverse, externals, cycles, targetPath);
 
+const outDir = join(targetPath, '.orchestration', 'tools');
+mkdirSync(outDir, { recursive: true });
 const filename = `depgraph_${projectName}_${getDateStamp()}.md`;
-const outputPath = join(targetPath, filename);
+const outputPath = join(outDir, filename);
 writeFileSync(outputPath, output);
 
 const totalImports = [...forward.values()].reduce((sum, s) => sum + s.size, 0);

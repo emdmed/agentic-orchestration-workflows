@@ -230,7 +230,9 @@ function main() {
     lines.push("");
   }
 
-  const outFile = path.join(root, `symbols_${projectName}_${fileTs}.md`);
+  const outDir = path.join(root, '.orchestration', 'tools');
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `symbols_${projectName}_${fileTs}.md`);
   fs.writeFileSync(outFile, lines.join("\n"), "utf-8");
   console.log(`✓ Symbol index written to ${outFile}`);
   console.log(`  Files scanned: ${files.length} | Symbols found: ${allSymbols.length}`);
