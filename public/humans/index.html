@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>how it works — agentic scripts</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
+      background: #09090b;
+      color: #d4d4d8;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 4rem 1.5rem;
+      line-height: 1.6;
+    }
+    main { max-width: 600px; width: 100%; }
+
+    .header {
+      margin-bottom: 3rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid #27272a;
+    }
+    h1 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fafafa;
+      letter-spacing: 0.04em;
+    }
+    h1 span { color: #52525b; }
+    .subtitle {
+      font-size: 0.75rem;
+      color: #71717a;
+      margin-top: 0.3rem;
+    }
+    a {
+      color: #a1a1aa;
+      text-decoration: none;
+      transition: color 0.12s ease;
+    }
+    a:hover { color: #fafafa; }
+
+    .how-it-works h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #fafafa;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.8rem;
+    }
+    .how-it-works p {
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      margin-bottom: 0.8rem;
+    }
+    .how-it-works .highlight {
+      color: #d4d4d8;
+      font-weight: 500;
+    }
+    .comparison {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.7rem;
+      margin: 1rem 0;
+    }
+    .comparison th {
+      text-align: left;
+      font-weight: 500;
+      color: #71717a;
+      padding: 0.4rem 0.6rem;
+      border-bottom: 1px solid #27272a;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .comparison td {
+      padding: 0.35rem 0.6rem;
+      border-bottom: 1px solid #18181b;
+      color: #a1a1aa;
+    }
+    .comparison td:first-child {
+      color: #71717a;
+    }
+    .comparison .good { color: #4ade80; }
+    .comparison .bad { color: #71717a; }
+
+    .footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #27272a;
+      font-size: 0.65rem;
+      color: #52525b;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="header">
+      <h1>agentic scripts <span>/</span> humans</h1>
+      <p class="subtitle">how compaction-driven orchestration works</p>
+    </div>
+
+    <div class="how-it-works">
+      <h2>how it works</h2>
+      <p>
+        These workflows orchestrate AI agents to explore codebases efficiently.
+        The key technique is <span class="highlight">compaction</span> — a pre-processing
+        step that strips source files down to their structural skeleton: function signatures,
+        imports, exports, component props, and type definitions. No implementation details.
+      </p>
+      <p>
+        Without compaction, an agent typically needs 10-20+ tool calls to understand a codebase —
+        globbing for files, reading each one in full, grepping for relationships. Each call is an
+        LLM round-trip. With compaction, the agent gets the full picture in 2-4 calls by grepping
+        a single pre-processed file.
+      </p>
+      <table class="comparison">
+        <tr>
+          <th></th>
+          <th>vanilla agent</th>
+          <th>with compaction</th>
+        </tr>
+        <tr>
+          <td>tool calls to understand codebase</td>
+          <td class="bad">10-20+</td>
+          <td class="good">2-4</td>
+        </tr>
+        <tr>
+          <td>tokens on source code</td>
+          <td class="bad">high (full files)</td>
+          <td class="good">low (signatures only)</td>
+        </tr>
+        <tr>
+          <td>LLM round-trips</td>
+          <td class="bad">many</td>
+          <td class="good">few</td>
+        </tr>
+        <tr>
+          <td>risk of wrong path</td>
+          <td class="bad">high</td>
+          <td class="good">low</td>
+        </tr>
+      </table>
+      <p>
+        The tradeoff is a one-time compaction cost (~5-10s to run the script). It pays for itself
+        on the first task and is skipped entirely on subsequent ones.
+      </p>
+    </div>
+
+    <div class="footer"><a href="/">&larr; back</a></div>
+  </main>
+</body>
+</html>

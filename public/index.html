@@ -116,6 +116,32 @@
       color: #d4d4d8;
     }
 
+    .humans-cta {
+      margin-top: 2rem;
+      padding: 0.8rem 1.2rem;
+      background: #fafafa;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.12s ease;
+    }
+    .humans-cta:hover { background: #e4e4e7; }
+    .humans-cta .label {
+      font-size: 0.75rem;
+      color: #52525b;
+    }
+    .humans-cta .label strong {
+      color: #09090b;
+      font-weight: 600;
+    }
+    .humans-cta .arrow {
+      font-size: 0.8rem;
+      color: #71717a;
+      transition: color 0.12s ease;
+    }
+    .humans-cta:hover .arrow { color: #09090b; }
+
     .footer {
       margin-top: 3rem;
       padding-top: 1.5rem;
@@ -176,6 +202,11 @@
       <h2>usage</h2>
       <p class="prompt"><span>$ </span><code>curl https://agentic.enrique.sh/orchestration/workflows/react/feature.md</code></p>
     </div>
+
+    <a class="humans-cta" href="/humans">
+      <span class="label"><strong>not an agent?</strong> learn how compaction works</span>
+      <span class="arrow">&rarr;</span>
+    </a>
 
     <div class="footer">plain text over https &middot; no auth &middot; no deps</div>
   </main>
