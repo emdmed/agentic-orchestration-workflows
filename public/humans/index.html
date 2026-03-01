@@ -148,6 +148,43 @@
       </p>
     </div>
 
+    <div class="how-it-works">
+      <h2>tools</h2>
+
+      <p>
+        <span class="highlight">compaction.js</span> — walks your project tree and strips every
+        JS/TS/Python file down to its skeleton: imports, exports, function signatures, component
+        props, hook usage, class declarations, and type definitions. The output is a single
+        <code>compacted_*.md</code> file the agent greps instead of reading source files one by one.
+        Supports React-specific patterns (memo, forwardRef, useState, useEffect with dependency
+        arrays, custom hooks).
+      </p>
+
+      <p>
+        <span class="highlight">dep-graph.js</span> — builds a full dependency graph from import/require
+        statements. For each file it records what it imports (forward edges), what imports it
+        (reverse edges / <code>imported-by</code>), and which external packages it uses. It also
+        runs cycle detection via DFS. Output is a <code>depgraph_*.md</code> with a summary,
+        circular dependency list, external package list, and per-file graph. Agents grep
+        <code>imported-by</code> to check blast radius before modifying a file.
+      </p>
+
+      <p>
+        <span class="highlight">symbols.js</span> — extracts every top-level symbol (components,
+        functions, hooks, classes, types, constants) with its file path, line number, and export
+        type (default, named, or internal). Output is a <code>symbols_*.md</code> with markdown
+        tables grouped by kind, sorted alphabetically. Lets agents answer "where is X defined?"
+        with a single grep instead of globbing the entire codebase.
+      </p>
+
+      <p>
+        All three scripts are zero-dependency (Node.js built-ins only), run in ~5-10 seconds,
+        and produce markdown files that persist across agent sessions. The orchestration protocol
+        enforces a strict order: compaction first, then grep the output, then read source files
+        only for gaps.
+      </p>
+    </div>
+
     <div class="footer"><a href="/">&larr; back</a></div>
   </main>
 </body>

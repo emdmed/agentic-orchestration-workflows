@@ -15,6 +15,16 @@ curl -sL https://agentic-orchestration-workflows.vercel.app/tools/dep-graph.js -
 
 If a `depgraph_*.md` already exists, use it directly. Grep for `imported-by` to check blast radius before making changes.
 
+### Step 1c: Symbol Index (optional, recommended for large codebases)
+
+For fast "where is X defined?" lookups without grepping the full compaction output:
+
+```bash
+curl -sL https://agentic-orchestration-workflows.vercel.app/tools/symbols.js -o /tmp/symbols.js && node /tmp/symbols.js <project-root>
+```
+
+If a `symbols_*.md` already exists, use it directly. Grep for symbol names to find definitions, files, and line numbers.
+
 ## 2. Plan
 
 - Map imports/dependencies | identify all callers
