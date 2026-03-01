@@ -9,6 +9,12 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { execSync } from "child_process";
+
+function getGitSha(dir) {
+  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
+  catch { return 'unknown'; }
+}
 
 // ── Config ──
 
@@ -210,7 +216,7 @@ function main() {
 
   const lines = [];
   lines.push(`# Symbol Index — ${projectName}`);
-  lines.push(`Generated: ${ts} | Files: ${files.length} | Symbols: ${allSymbols.length}`);
+  lines.push(`Generated: ${ts} | Files: ${files.length} | Symbols: ${allSymbols.length} | git-sha: ${getGitSha(root)}`);
   lines.push("");
 
   for (const [kind, syms] of Object.entries(groups)) {

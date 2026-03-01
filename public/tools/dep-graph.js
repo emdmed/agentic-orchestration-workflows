@@ -8,7 +8,13 @@
 //   node dep-graph.js [path]
 
 import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
 import { resolve, join, basename, dirname, relative, extname } from 'path';
+
+function getGitSha(dir) {
+  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
+  catch { return 'unknown'; }
+}
 
 // ── Config ──
 
@@ -206,9 +212,10 @@ function detectCycles(forward) {
 
 // ── Markdown output ──
 
-function formatMarkdown(projectName, forward, reverse, externals, cycles) {
+function formatMarkdown(projectName, forward, reverse, externals, cycles, rootDir) {
   const lines = [];
   lines.push(`# Dependency Graph: ${projectName}`);
+  lines.push(`git-sha: ${getGitSha(rootDir)}`);
   lines.push('');
 
   // Summary
@@ -296,7 +303,7 @@ const projectName = basename(targetPath);
 const files = collectFiles(targetPath);
 const { forward, reverse, externals } = buildGraph(files, targetPath);
 const cycles = detectCycles(forward);
-const output = formatMarkdown(projectName, forward, reverse, externals, cycles);
+const output = formatMarkdown(projectName, forward, reverse, externals, cycles, targetPath);
 
 const filename = `depgraph_${projectName}_${getDateStamp()}.md`;
 const outputPath = join(targetPath, filename);

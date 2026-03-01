@@ -9,7 +9,13 @@
 //   node compaction.js [path] [--json]
 
 import { readFileSync, readdirSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
 import { resolve, join, basename, dirname } from 'path';
+
+function getGitSha(dir) {
+  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
+  catch { return 'unknown'; }
+}
 
 // ── Parsers: Python ──
 
@@ -568,8 +574,10 @@ const { output, stats } = compactProject(targetPath);
 const dirName = basename(targetPath);
 const filename = `compacted_${dirName}_${getDateStamp()}.md`;
 const outputPath = join(targetPath, filename);
+const sha = getGitSha(targetPath);
+const outputWithSha = `git-sha: ${sha}\n${output}`;
 
-writeFileSync(outputPath, jsonOutput ? JSON.stringify({ output, stats }, null, 2) : output);
+writeFileSync(outputPath, jsonOutput ? JSON.stringify({ output: outputWithSha, stats }, null, 2) : outputWithSha);
 
 const rate = stats.rawTokens > 0 ? ((1 - stats.compactedTokens / stats.rawTokens) * 100).toFixed(1) : '0';
 console.log(`\nCompaction complete!\n`);

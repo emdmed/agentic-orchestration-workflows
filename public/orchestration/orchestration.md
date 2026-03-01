@@ -1,19 +1,21 @@
 # Orchestration Protocol
 
-**MANDATORY: Process BEFORE any tool usage.**
+> **Note:** Workflows are fetched at runtime from the CDN using `WebFetch`, so agents always get the latest version.
+
+**MANDATORY FIRST STEP: Read and follow `.orchestration/orchestration.md` before ANY tool usage. No exceptions.**
 
 ## 1. CLASSIFY TASK
 
 | Signal Words | Workflow |
 |--------------|----------|
-| build, create, add, implement, new | `feature.md` |
-| fix, broken, error, crash, bug | `bugfix.md` |
-| clean up, improve, restructure, rename | `refactor.md` |
-| slow, optimize, performance, speed | `performance.md` |
-| review, check, PR, merge | `review.md` |
-| PR description, pull request title | `pr.md` |
-| document, README, explain | `docs.md` |
-| complex, multi-step, plan | `todo.md` |
+| build, create, add, implement, new | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/feature.md) |
+| fix, broken, error, crash, bug | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/bugfix.md) |
+| clean up, improve, restructure, rename | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/refactor.md) |
+| slow, optimize, performance, speed | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/performance.md) |
+| review, check, PR, merge | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/review.md) |
+| PR description, pull request title | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/pr.md) |
+| document, README, explain | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/docs.md) |
+| complex, multi-step, plan | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
 **Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | Other → `workflows/`
@@ -23,25 +25,29 @@
 - **Ambiguous:** Use `AskUserQuestion` (header: "Workflow", options: relevant workflows)
 - **No match:** Ask user to clarify
 
-## 2. CODEBASE DISCOVERY
+## 2. CODEBASE DISCOVERY PROTOCOL
 
-### Step 1a: Compaction (MANDATORY for non-exempt tasks)
+Before exploring or modifying any codebase, agents MUST follow this gated discovery sequence. **Each step is a gate — you may NOT proceed to the next until the current step is exhausted.**
+
+### Step 1: Compact
+
+If no `compacted_*.md` exists in the project root, generate one:
 
 ```bash
 curl -sL https://agentic-orchestration-workflows.vercel.app/tools/compaction.js -o /tmp/compaction.js && node /tmp/compaction.js <project-root>
 ```
 
-If a `compacted_*.md` already exists, use it directly.
+If a `compacted_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate.
 
 ### Step 1b: Dependency Graph (optional, recommended for refactors)
 
-If the task involves modifying imports, moving files, or understanding blast radius:
+If the task involves modifying imports, moving files, or understanding blast radius, generate a dependency graph:
 
 ```bash
 curl -sL https://agentic-orchestration-workflows.vercel.app/tools/dep-graph.js -o /tmp/dep-graph.js && node /tmp/dep-graph.js <project-root>
 ```
 
-If a `depgraph_*.md` already exists, use it directly. Grep for `imported-by` to check blast radius before making changes.
+If a `depgraph_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate. Grep for `imported-by` to check blast radius before making changes.
 
 ### Step 1c: Symbol Index (optional, recommended for large codebases)
 
@@ -51,7 +57,7 @@ For fast "where is X defined?" lookups without grepping the full compaction outp
 curl -sL https://agentic-orchestration-workflows.vercel.app/tools/symbols.js -o /tmp/symbols.js && node /tmp/symbols.js <project-root>
 ```
 
-If a `symbols_*.md` already exists, use it directly. Grep for symbol names to find definitions, files, and line numbers.
+If a `symbols_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate. Grep for symbol names to find definitions, files, and line numbers.
 
 ### Step 2: Search the compaction output (MANDATORY)
 

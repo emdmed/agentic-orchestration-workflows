@@ -149,6 +149,28 @@
     </div>
 
     <div class="how-it-works">
+      <h2>why JS tools reduce token use</h2>
+      <p>
+        The core insight: <span class="highlight">JS scripts run outside the LLM context window</span>.
+        When an agent reads a 500-line file to find three function signatures, all 500 lines count as
+        input tokens — the LLM pays for implementation details it doesn't need. These tools do the
+        filtering in Node.js (zero tokens) and hand the agent only the structural output.
+      </p>
+      <p>
+        A typical 200-file project might be ~50k tokens of raw source. After compaction, the same
+        project is ~3-5k tokens of signatures. The agent greps that instead of reading files one by
+        one, which means <span class="highlight">fewer tool calls, less context pollution, and faster
+        convergence</span> on the right file to edit.
+      </p>
+      <p>
+        This also fixes a subtler problem: <span class="highlight">agents pick wrong files less often</span>.
+        Without a map, an agent guesses which files matter based on names and partial greps. With a
+        symbol index or dependency graph already in context, it jumps straight to the right location —
+        no exploratory reads that burn tokens and add noise.
+      </p>
+    </div>
+
+    <div class="how-it-works">
       <h2>tools</h2>
 
       <p>
