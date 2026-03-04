@@ -24,40 +24,87 @@
 - **Clear match:** Proceed to binding
 - **Ambiguous:** Use `AskUserQuestion` (header: "Workflow", options: relevant workflows)
 - **No match:** Ask user to clarify
+- **Mixed tasks** spanning multiple workflows: Use `AskUserQuestion` to confirm, or pick the primary workflow
+
+### EXEMPT Tasks
+
+A task is EXEMPT only when ALL of these are true: single file, 1-2 ops, zero architecture impact, obvious correctness, **no codebase search needed**.
+
+**EXEMPT examples:** fix typo in README, update a string literal, bump a version number
+**NOT EXEMPT:** rename a component (needs dep-graph), change a shared util (needs blast-radius check), add a prop (needs symbol lookup)
+
+```
+ORCHESTRATION_BINDING:
+- Task: [description]
+- Classification: EXEMPT
+```
 
 ## 2. CODEBASE DISCOVERY PROTOCOL
 
 Before exploring or modifying any codebase, agents MUST follow this gated discovery sequence. **Each step is a gate — you may NOT proceed to the next until the current step is exhausted.**
 
-### Step 1: Compact
+### Tool Script Caching
+
+Cache tool scripts locally to `.orchestration/tools/scripts/` to avoid re-downloading every run. Download once, run from local path. Re-download only on execution errors.
+
+```bash
+mkdir -p .orchestration/tools/scripts
+# Download only if not cached
+[ -f .orchestration/tools/scripts/compaction.js ] || curl -sL https://agentic-orchestration-workflows.vercel.app/tools/compaction.js -o .orchestration/tools/scripts/compaction.js
+[ -f .orchestration/tools/scripts/dep-graph.js ] || curl -sL https://agentic-orchestration-workflows.vercel.app/tools/dep-graph.js -o .orchestration/tools/scripts/dep-graph.js
+[ -f .orchestration/tools/scripts/symbols.js ]   || curl -sL https://agentic-orchestration-workflows.vercel.app/tools/symbols.js -o .orchestration/tools/scripts/symbols.js
+```
+
+If a cached script fails with an execution error, delete it and re-download.
+
+### Step 1: Compact (REQUIRED for all non-EXEMPT tasks)
 
 If no `compacted_*.md` exists in `.orchestration/tools/`, generate one:
 
 ```bash
-curl -sL https://agentic-orchestration-workflows.vercel.app/tools/compaction.js -o /tmp/compaction.js && node /tmp/compaction.js <project-root>
+node .orchestration/tools/scripts/compaction.js <project-root>
 ```
 
-If a `.orchestration/tools/compacted_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate.
+**Staleness check:** If a `compacted_*.md` already exists:
+1. Grep for `git-sha:` and compare against `git rev-parse HEAD`. If they differ, regenerate.
+2. Run `git status --short` — if tracked files with uncommitted changes are relevant to the task, regenerate.
 
-### Step 1b: Dependency Graph (optional, recommended for refactors)
+### Step 1b: Dependency Graph
 
-If the task involves modifying imports, moving files, or understanding blast radius, generate a dependency graph:
+**REQUIRED when:**
+- Workflow = refactor
+- Task involves moving, renaming, or deleting files
+- Task modifies import/export statements
+- You need to answer "what breaks if I change X?"
 
 ```bash
-curl -sL https://agentic-orchestration-workflows.vercel.app/tools/dep-graph.js -o /tmp/dep-graph.js && node /tmp/dep-graph.js <project-root>
+node .orchestration/tools/scripts/dep-graph.js <project-root>
 ```
 
-If a `.orchestration/tools/depgraph_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate. Grep for `imported-by` to check blast radius before making changes.
+Staleness check: same git-sha + `git status --short` rules as compaction. Grep for `imported-by` to check blast radius before making changes.
 
-### Step 1c: Symbol Index (optional, recommended for large codebases)
+### Step 1c: Symbol Index
 
-For fast "where is X defined?" lookups without grepping the full compaction output:
+**REQUIRED when:**
+- Task requires finding where a specific symbol is defined
+- Task involves renaming a symbol across files
+- Compaction grep returns too many results to scan efficiently
 
 ```bash
-curl -sL https://agentic-orchestration-workflows.vercel.app/tools/symbols.js -o /tmp/symbols.js && node /tmp/symbols.js <project-root>
+node .orchestration/tools/scripts/symbols.js <project-root>
 ```
 
-If a `.orchestration/tools/symbols_*.md` already exists, grep for `git-sha:` in it and compare against `git rev-parse HEAD`. If they match, use it directly. If not, regenerate. Grep for symbol names to find definitions, files, and line numbers.
+Staleness check: same git-sha + `git status --short` rules as compaction. Grep for symbol names to find definitions, files, and line numbers.
+
+### Artifact Cleanup
+
+After generating any new artifact, remove older versions of the same type:
+
+```bash
+ls -t .orchestration/tools/compacted_*.md 2>/dev/null | tail -n +2 | xargs rm -f
+ls -t .orchestration/tools/depgraph_*.md 2>/dev/null | tail -n +2 | xargs rm -f
+ls -t .orchestration/tools/symbols_*.md 2>/dev/null | tail -n +2 | xargs rm -f
+```
 
 ### Step 2: Search the compaction output (MANDATORY)
 
@@ -80,31 +127,39 @@ The following are protocol violations:
 - Using `Glob` or Explore agents before grepping the compaction output
 - Reading source files without stating which compaction line led you there
 - Skipping Step 2 entirely
+- Leaving stale timestamped files after generating new ones
 
 ## 3. BINDING (required before ANY tool use)
 
 ```
 ORCHESTRATION_BINDING:
 - Task: [description]
-- Workflow: [path]
-- Complexity: [simple/complex]
+- Workflow: [name + URL]
+- Complexity: [simple | complex]
+- Tools: [compaction | compaction + dep-graph | compaction + symbols | compaction + dep-graph + symbols]
 ```
 
-## 4. EXEMPT TASKS
-
-Requires ALL: single file, 1-2 ops, zero architecture impact, obvious correctness, **no codebase search needed**.
-
-```
-ORCHESTRATION_BINDING:
-- Task: [description]
-- Classification: EXEMPT
-```
-
-## 5. COMPLETION
+## 4. COMPLETION
 
 ```
 ORCHESTRATION_COMPLETE:
 - Task: [description]
 - Workflow: [used]
-- Files: [modified]
+- Files Modified: [list]
+- Cleanup: [yes | no | n/a]
+```
+
+## 5. MAINTENANCE
+
+Periodic cleanup for `.orchestration/tools/`:
+
+```bash
+# Remove all stale artifacts (keep only the latest of each type)
+for prefix in compacted depgraph symbols; do
+  ls -t .orchestration/tools/${prefix}_*.md 2>/dev/null | tail -n +2 | xargs rm -f
+done
+
+# Re-download tool scripts (e.g., after upstream updates)
+rm -f .orchestration/tools/scripts/*.js
+# Scripts will be re-cached on next run via the caching step in Section 2
 ```
