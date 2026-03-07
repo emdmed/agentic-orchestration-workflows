@@ -39,6 +39,14 @@ ORCHESTRATION_BINDING:
 - Classification: EXEMPT
 ```
 
+## 1b. LOAD PATTERNS
+
+Check for `.patterns/patterns.md` at the project root. If it exists, read it. This file contains routing instructions that point to other pattern files inside `.patterns/` — small custom instructions users create for recurring conventions (API endpoints, auth handling, styling, naming, etc.).
+
+Follow the routing in `patterns.md` to load only the patterns relevant to the current task. Treat loaded patterns as **binding constraints** — they layer on top of the selected workflow without replacing it.
+
+If `.patterns/patterns.md` does not exist, skip this step.
+
 ## 2. CODEBASE DISCOVERY PROTOCOL
 
 Before exploring or modifying any codebase, agents MUST follow this gated discovery sequence. **Each step is a gate — you may NOT proceed to the next until the current step is exhausted.**
