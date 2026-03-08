@@ -14,8 +14,10 @@
 | slow, optimize, performance, speed | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/performance.md) |
 | review, check, PR, merge | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/review.md) |
 | PR description, pull request title | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/pr.md) |
+| test, spec, coverage, e2e, unit | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/test.md) |
 | document, README, explain | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/docs.md) |
 | complex, multi-step, plan | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) |
+| patterns, conventions, generate patterns | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
 **Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | Other → `workflows/`
