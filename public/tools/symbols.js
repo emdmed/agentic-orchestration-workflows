@@ -29,10 +29,12 @@ const KIND = {
 
 const JS_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"];
 const PY_EXTENSIONS = [".py"];
-const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS];
+const CS_EXTENSIONS = [".cs"];
+const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS, ...CS_EXTENSIONS];
 const SKIP_DIRECTORIES = new Set([
   "node_modules", "dist", ".git", "target", "build", ".next", ".turbo",
   "out", "coverage", ".cache", "__pycache__", ".venv", "venv", ".idea", ".vscode",
+  "bin", "obj",
 ]);
 
 // ── Walker ──
@@ -167,6 +169,61 @@ function extractPython(code) {
   return symbols;
 }
 
+// ── C# extraction ──
+
+function extractCSharp(code) {
+  const lines = code.split("\n");
+  const symbols = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+    const lineNum = i + 1;
+
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) continue;
+
+    // Enum
+    const enumMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*enum\s+(\w+)/);
+    if (enumMatch) {
+      symbols.push({ name: enumMatch[1], kind: KIND.TYPE, line: lineNum, exp: "" });
+      continue;
+    }
+
+    // Interface
+    const ifaceMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:partial\s+)?interface\s+(\w+)/);
+    if (ifaceMatch) {
+      symbols.push({ name: ifaceMatch[1], kind: KIND.TYPE, line: lineNum, exp: "" });
+      continue;
+    }
+
+    // Class / struct / record
+    const classMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:partial\s+)?(?:class|struct|record)\s+(\w+)/);
+    if (classMatch) {
+      symbols.push({ name: classMatch[1], kind: KIND.CLASS, line: lineNum, exp: "" });
+      continue;
+    }
+
+    // Methods (top-level-ish: public/private/protected/internal + return type + name + parens)
+    const methodMatch = trimmed.match(/^(?:public|private|protected|internal)\s+(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(/);
+    if (methodMatch && !trimmed.includes(" class ") && !trimmed.includes(" interface ") && !trimmed.includes(" struct ") && !trimmed.includes(" enum ")) {
+      const name = methodMatch[1];
+      if (name !== "get" && name !== "set" && name !== "if" && name !== "for" && name !== "while" && name !== "switch" && name !== "catch" && name !== "using" && name !== "return" && name !== "new") {
+        symbols.push({ name, kind: KIND.FUNCTION, line: lineNum, exp: "" });
+        continue;
+      }
+    }
+
+    // Constants
+    const constMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:readonly\s+)?const\s+\w+\s+(\w+)/);
+    if (constMatch) {
+      symbols.push({ name: constMatch[1], kind: KIND.CONSTANT, line: lineNum, exp: "" });
+      continue;
+    }
+  }
+
+  return symbols;
+}
+
 // ── Main ──
 
 function main() {
@@ -175,7 +232,7 @@ function main() {
 
   for (const arg of args) {
     if (arg === "--help" || arg === "-h") {
-      console.log("Usage: node symbols.js [path]\n\nGenerate a symbol index for a JS/TS/Python project.\nZero dependencies — only requires Node.js.");
+      console.log("Usage: node symbols.js [path]\n\nGenerate a symbol index for a JS/TS/Python/C# project.\nZero dependencies — only requires Node.js.");
       process.exit(0);
     } else if (!arg.startsWith("-")) {
       targetPath = arg;
@@ -194,7 +251,8 @@ function main() {
 
     const relPath = path.relative(root, fp);
     const isPython = fp.endsWith(".py");
-    const extracted = isPython ? extractPython(content) : extractJS(content, fp);
+    const isCSharp = fp.endsWith(".cs");
+    const extracted = isCSharp ? extractCSharp(content) : isPython ? extractPython(content) : extractJS(content, fp);
 
     for (const sym of extracted) {
       allSymbols.push({ ...sym, file: relPath });

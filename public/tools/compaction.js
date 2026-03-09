@@ -119,6 +119,129 @@ const formatPythonSkeleton = (skeleton) => {
   return lines.join('\n');
 };
 
+// ── Parsers: C# ──
+
+const CS_EXTENSIONS = ['.cs'];
+
+const isCSharpParseable = (path) => CS_EXTENSIONS.some(ext => path.endsWith(ext));
+
+const extractCSharpSkeleton = (code, filePath = '') => {
+  const lines = code.split('\n');
+  const skeleton = { usings: [], namespaces: [], classes: [], interfaces: [], enums: [], functions: [], constants: [] };
+  let pendingAttributes = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue;
+
+    // Attributes
+    const attrMatch = trimmed.match(/^\[([^\]]+)\]$/);
+    if (attrMatch) { pendingAttributes.push(attrMatch[1].split('(')[0].trim()); continue; }
+
+    // Using directives
+    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?([\w.]+)\s*;/);
+    if (usingMatch) { skeleton.usings.push(usingMatch[1]); pendingAttributes = []; continue; }
+
+    // Namespace
+    const nsMatch = trimmed.match(/^(?:file\s+)?namespace\s+([\w.]+)/);
+    if (nsMatch) { skeleton.namespaces.push(nsMatch[1]); pendingAttributes = []; continue; }
+
+    // Enum
+    const enumMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*enum\s+(\w+)/);
+    if (enumMatch) {
+      skeleton.enums.push({ name: enumMatch[1], line: lineNum, attributes: [...pendingAttributes] });
+      pendingAttributes = []; continue;
+    }
+
+    // Interface
+    const ifaceMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:partial\s+)?interface\s+(\w+)(?:<[^>]+>)?(?:\s*:\s*(.+?))?(?:\s*\{|$)/);
+    if (ifaceMatch) {
+      const bases = ifaceMatch[2] ? ifaceMatch[2].split(',').map(s => s.trim()).filter(Boolean) : [];
+      skeleton.interfaces.push({ name: ifaceMatch[1], line: lineNum, attributes: [...pendingAttributes], bases });
+      pendingAttributes = []; continue;
+    }
+
+    // Class / struct / record
+    const classMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:partial\s+)?(?:class|struct|record)\s+(\w+)(?:<[^>]+>)?(?:\s*\(([^)]*)\))?(?:\s*:\s*(.+?))?(?:\s*\{|$)/);
+    if (classMatch) {
+      const bases = classMatch[3] ? classMatch[3].split(',').map(s => s.trim()).filter(Boolean) : [];
+      const params = classMatch[2] ? classMatch[2].replace(/\s+/g, ' ').trim() : undefined;
+      const isStatic = /\bstatic\b/.test(trimmed);
+      const isAbstract = /\babstract\b/.test(trimmed);
+      skeleton.classes.push({ name: classMatch[1], line: lineNum, attributes: [...pendingAttributes], bases, params, static: isStatic, abstract: isAbstract });
+      pendingAttributes = []; continue;
+    }
+
+    // Top-level or static methods (simplified: access modifier + return type + name + params)
+    const methodMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(([^)]*)\)/);
+    if (methodMatch && !trimmed.includes(' class ') && !trimmed.includes(' interface ') && !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
+      const name = methodMatch[1];
+      // Skip property getters/setters and constructors that match class names
+      if (name !== 'get' && name !== 'set' && name !== 'if' && name !== 'for' && name !== 'while' && name !== 'switch' && name !== 'catch' && name !== 'using' && name !== 'return' && name !== 'new') {
+        let params = methodMatch[2].replace(/\s+/g, ' ').trim();
+        const isAsync = /\basync\b/.test(trimmed);
+        const isStatic = /\bstatic\b/.test(trimmed);
+        skeleton.functions.push({ name, line: lineNum, attributes: [...pendingAttributes], params, async: isAsync, static: isStatic });
+        pendingAttributes = []; continue;
+      }
+    }
+
+    // Constants (const fields)
+    const constMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:readonly\s+)?const\s+\w+\s+(\w+)/);
+    if (constMatch) { skeleton.constants.push(constMatch[1]); pendingAttributes = []; continue; }
+
+    pendingAttributes = [];
+  }
+  return skeleton;
+};
+
+const formatCSharpSkeleton = (skeleton) => {
+  if (!skeleton) return '';
+  const lines = [];
+  if (skeleton.usings.length > 0) {
+    const parts = [];
+    parts.push(`${skeleton.usings.length} usings`);
+    lines.push(`imports: ${parts.join(', ')}`);
+  }
+  if (skeleton.namespaces.length > 0) {
+    lines.push(`namespace: ${skeleton.namespaces.join(', ')}`);
+  }
+  if (skeleton.interfaces.length > 0) {
+    lines.push(`interfaces: ${skeleton.interfaces.map(iface => {
+      const parts = [iface.name];
+      if (iface.attributes.length > 0) parts.push(`@${iface.attributes[0]}`);
+      if (iface.bases.length > 0) parts.push(`(${iface.bases.join(',')})`);
+      return `${parts.join(' ')}:${iface.line}`;
+    }).join(', ')}`);
+  }
+  if (skeleton.classes.length > 0) {
+    lines.push(`classes: ${skeleton.classes.map(c => {
+      const parts = [c.name];
+      if (c.attributes.length > 0) parts.push(`@${c.attributes[0]}`);
+      if (c.bases.length > 0) parts.push(`(${c.bases.join(',')})`);
+      return `${parts.join(' ')}:${c.line}`;
+    }).join(', ')}`);
+  }
+  if (skeleton.enums.length > 0) {
+    lines.push(`enums: ${skeleton.enums.map(e => `${e.name}:${e.line}`).join(', ')}`);
+  }
+  if (skeleton.functions.length > 0) {
+    lines.push(`fn: ${skeleton.functions.map(f => {
+      const asyncPrefix = f.async ? 'async ' : '';
+      const staticPrefix = f.static ? 'static ' : '';
+      return `${staticPrefix}${asyncPrefix}${f.name}(${f.params || ''}):${f.line}`;
+    }).join(', ')}`);
+  }
+  if (skeleton.constants.length > 0) {
+    const names = skeleton.constants;
+    lines.push(names.length > 5 ? `const: ${names.slice(0, 5).join(', ')} +${names.length - 5} more` : `const: ${names.join(', ')}`);
+  }
+  return lines.join('\n');
+};
+
 // ── Parsers: JS/TS (regex-based, zero dependencies) ──
 
 const JS_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
@@ -507,7 +630,7 @@ const formatOutput = (results) => {
   for (const result of results) {
     lines.push(`## ${result.relativePath}`);
     if (result.skeleton) {
-      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
+      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : isCSharpParseable(result.relativePath) ? formatCSharpSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
       if (output) lines.push(output);
     }
   }
@@ -516,7 +639,7 @@ const formatOutput = (results) => {
 
 // ── Walker ──
 
-const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'target', 'build', '.next', '.turbo', 'out', 'coverage', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode']);
+const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'target', 'build', '.next', '.turbo', 'out', 'coverage', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode', 'bin', 'obj']);
 
 function collectFiles(dir, rootDir = dir, files = []) {
   let entries;
@@ -524,7 +647,7 @@ function collectFiles(dir, rootDir = dir, files = []) {
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) { if (!SKIP_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) collectFiles(fullPath, rootDir, files); }
-    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath))) {
+    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath) || isCSharpParseable(fullPath))) {
       files.push({ path: fullPath, relativePath: fullPath.slice(rootDir.length + 1) });
     }
   }
@@ -544,6 +667,7 @@ function compactProject(rootPath) {
       let skeleton = null;
       if (isPythonParseable(file.path)) skeleton = extractPythonSkeleton(content, file.path);
       else if (isJsParseable(file.path)) skeleton = extractJsSkeleton(content, file.path);
+      else if (isCSharpParseable(file.path)) skeleton = extractCSharpSkeleton(content, file.path);
       results.push({ relativePath: file.relativePath, skeleton });
     } catch {}
   }
@@ -564,7 +688,7 @@ let jsonOutput = false;
 for (const arg of args) {
   if (arg === '--json') jsonOutput = true;
   else if (arg === '--help' || arg === '-h') {
-    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python project into a structural skeleton.\nZero dependencies — only requires Node.js.`);
+    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python/C# project into a structural skeleton.\nZero dependencies — only requires Node.js.`);
     process.exit(0);
   } else if (!arg.startsWith('-')) targetPath = arg;
 }

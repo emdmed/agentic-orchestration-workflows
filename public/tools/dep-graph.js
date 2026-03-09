@@ -20,10 +20,12 @@ function getGitSha(dir) {
 
 const JS_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
 const PY_EXTENSIONS = ['.py'];
-const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS];
+const CS_EXTENSIONS = ['.cs'];
+const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS, ...CS_EXTENSIONS];
 const SKIP_DIRECTORIES = new Set([
   'node_modules', 'dist', '.git', 'target', 'build', '.next', '.turbo',
   'out', 'coverage', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode',
+  'bin', 'obj',
 ]);
 
 // ── Walker ──
@@ -113,6 +115,29 @@ function extractPyImports(code) {
   return { local, external };
 }
 
+function extractCsImports(code) {
+  const external = [];
+
+  const lines = code.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // using Namespace.Sub;
+    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?([\w.]+)\s*;/);
+    if (usingMatch) {
+      external.push(usingMatch[1].split('.')[0]);
+      continue;
+    }
+
+    // Stop scanning after namespace/class declaration (usings are always at the top)
+    if (/^(?:namespace|class|struct|record|interface|enum)\b/.test(trimmed)) break;
+    if (/^(?:public|private|protected|internal)\s+/.test(trimmed) && /\b(?:class|struct|record|interface|enum)\b/.test(trimmed)) break;
+  }
+
+  // C# doesn't have file-based local imports like JS/Python — dependencies are namespace-based
+  return { local: [], external };
+}
+
 // ── Resolve local imports to file paths ──
 
 function resolveLocalImport(importSource, fromFile, rootDir, allFilesSet) {
@@ -157,7 +182,8 @@ function buildGraph(files, rootDir) {
     try { code = readFileSync(file, 'utf-8'); } catch { continue; }
 
     const isPython = PY_EXTENSIONS.some(ext => file.endsWith(ext));
-    const { local, external } = isPython ? extractPyImports(code) : extractJsImports(code);
+    const isCSharp = CS_EXTENSIONS.some(ext => file.endsWith(ext));
+    const { local, external } = isCSharp ? extractCsImports(code) : isPython ? extractPyImports(code) : extractJsImports(code);
 
     for (const imp of local) {
       const resolved = resolveLocalImport(imp, file, rootDir, allFilesSet);
@@ -291,7 +317,7 @@ let targetPath = process.cwd();
 
 for (const arg of args) {
   if (arg === '--help' || arg === '-h') {
-    console.log(`Usage: node dep-graph.js [path]\n\nGenerate a dependency graph for a JS/TS/Python project.\nZero dependencies — only requires Node.js.`);
+    console.log(`Usage: node dep-graph.js [path]\n\nGenerate a dependency graph for a JS/TS/Python/C# project.\nZero dependencies — only requires Node.js.`);
     process.exit(0);
   } else if (!arg.startsWith('-')) {
     targetPath = arg;

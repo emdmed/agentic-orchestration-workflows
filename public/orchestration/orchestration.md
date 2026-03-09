@@ -20,7 +20,7 @@
 | patterns, conventions, generate patterns | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
-**Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | Other → `workflows/`
+**Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | .NET (`.cs`) → `workflows/` | Other → `workflows/`
 
 ### Selection
 - **Clear match:** Proceed to binding
