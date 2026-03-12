@@ -176,14 +176,18 @@ const extractCSharpSkeleton = (code, filePath = '') => {
     }
 
     // Top-level or static methods (simplified: access modifier + return type + name + params)
-    const methodMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(([^)]*)\)/);
-    if (methodMatch && !trimmed.includes(' class ') && !trimmed.includes(' interface ') && !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
-      const name = methodMatch[1];
-      // Skip property getters/setters and constructors that match class names
+    // Match method start even if params span multiple lines
+    const methodStartMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(/);
+    if (methodStartMatch && !trimmed.includes(' class ') && !trimmed.includes(' interface ') && !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
+      const name = methodStartMatch[1];
+      // Skip property getters/setters and control flow keywords
       if (name !== 'get' && name !== 'set' && name !== 'if' && name !== 'for' && name !== 'while' && name !== 'switch' && name !== 'catch' && name !== 'using' && name !== 'return' && name !== 'new') {
-        let params = methodMatch[2].replace(/\s+/g, ' ').trim();
-        const isAsync = /\basync\b/.test(trimmed);
-        const isStatic = /\bstatic\b/.test(trimmed);
+        const { text: fullSig, endIndex } = readUntilBalanced(lines, i, '(', ')');
+        i = endIndex;
+        const paramsMatch = fullSig.match(/\(([^)]*)\)/);
+        let params = paramsMatch ? paramsMatch[1].replace(/\s+/g, ' ').trim() : '';
+        const isAsync = /\basync\b/.test(fullSig);
+        const isStatic = /\bstatic\b/.test(fullSig);
         skeleton.functions.push({ name, line: lineNum, attributes: [...pendingAttributes], params, async: isAsync, static: isStatic });
         pendingAttributes = []; continue;
       }
