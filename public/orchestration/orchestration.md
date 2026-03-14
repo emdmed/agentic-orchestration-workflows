@@ -35,19 +35,15 @@ EXEMPT only when ALL true: single file, 1-2 ops, zero architecture impact, obvio
 **EXEMPT:** fix typo in README, update a string literal, bump a version number
 **NOT EXEMPT:** rename a component (dep-graph), change a shared util (blast-radius), add a prop (symbol lookup)
 
-```
-ORCHESTRATION_BINDING:
-- Task: [description]
-- Classification: EXEMPT
-```
+⚙ [task] | EXEMPT
 
-## 1b. LOAD PATTERNS
+## 1b. LOAD PATTERNS (REQUIRED)
 
-If `.patterns/patterns.md` exists at project root, read it. Follow its routing to load only task-relevant pattern files from `.patterns/`. Treat loaded patterns as **binding constraints** layered on the workflow. Skip if file doesn't exist.
+Read `.patterns/patterns.md` at project root. Follow its routing to load only task-relevant pattern files from `.patterns/`. Treat loaded patterns as **binding constraints** layered on the workflow — violations are treated the same as workflow violations.
 
 ## 2. CODEBASE DISCOVERY PROTOCOL
 
-Follow this gated sequence. Do NOT skip steps.
+Follow this gated sequence. Do NOT skip steps. **Perform all housekeeping silently** — check artifact freshness, download missing scripts, regenerate stale artifacts, clean old versions — without narrating each step to the user.
 
 ### Tool Script Caching
 
@@ -104,31 +100,22 @@ Grep `compacted_*.md` for relevant components, hooks, functions, imports. Extrac
 
 ### Step 3: Read source / broad exploration (only for gaps)
 
-After Step 2, read specific source files when compaction lacks needed detail (function bodies, logic, CSS, config). **State which compaction line led you there.** If compaction doesn't cover a file type or grep returns nothing, fall back to `Glob`, `Grep` on source, or Explore agents — state why compaction was insufficient.
-
-### Violations
-
-- `Read`/`Glob`/Explore before grepping compaction
-- Reading source without citing compaction line
-- Skipping Step 2
-- Leaving stale artifacts after generating new ones
+After Step 2, read specific source files when compaction lacks needed detail (function bodies, logic, CSS, config). If compaction doesn't cover a file type or grep returns nothing, fall back to `Glob`, `Grep` on source, or Explore agents — state why compaction was insufficient.
 
 ## 3. BINDING (required before ANY tool use)
 
-```
-ORCHESTRATION_BINDING:
-- Task: [description]
-- Workflow: [name + URL]
-- Complexity: [simple | complex]
-- Tools: [compaction | compaction + dep-graph | compaction + symbols | compaction + dep-graph + symbols]
-```
+⚙ [task] | [workflow + URL] | [simple/complex] | [compaction | compaction + dep-graph | compaction + symbols | compaction + dep-graph + symbols]
 
 ## 4. COMPLETION
 
-```
-ORCHESTRATION_COMPLETE:
-- Task: [description]
-- Workflow: [used]
-- Files Modified: [list]
-- Cleanup: [yes | no | n/a]
-```
+✓ [task] | [workflow] | [files modified] | cleanup: [yes/no/n/a]
+
+## 5. SELF-MAINTENANCE
+
+### On conversation start
+
+Compare local `.orchestration/orchestration.md` against CDN version (`https://agentic-orchestration-workflows.vercel.app/orchestration/orchestration.md`). If identical, use local (faster). If CDN is newer, update local copy silently.
+
+### On completion
+
+Check that `CLAUDE.md` still correctly references `.orchestration/orchestration.md` path. Check that `MEMORY.md` orchestration section reflects current protocol. Update if stale.
