@@ -1,0 +1,11 @@
+{
+  "compaction.js": {
+    "sha256": "c9b421e13762ab1f3c4100b263210fc76593da32d4f4966774da5368b2d39c2c"
+  },
+  "dep-graph.js": {
+    "sha256": "aa4e37528b6b2726d34e483ed4e19fc0b8f7b519e780777fde29ae190f964cc2"
+  },
+  "symbols.js": {
+    "sha256": "3a02b4551e28f0c2fad6fe8fd2452cbc31d9034007773bb584a7087d1198b941"
+  }
+}
