@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>how it works — agentic scripts</title>
+  <meta name="description" content="How compaction-driven orchestration works. Reduce AI agent tool calls from 10-20+ down to 2-4 by pre-processing codebases into structural skeletons.">
+  <meta property="og:title" content="how it works — agentic scripts">
+  <meta property="og:description" content="How compaction-driven orchestration works. Reduce AI agent tool calls from 10-20+ down to 2-4.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://agentic.enrique.sh/humans">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="how it works — agentic scripts">
+  <meta name="twitter:description" content="How compaction-driven orchestration works for AI agents.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
+  <link rel="canonical" href="https://agentic.enrique.sh/humans">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -22,7 +32,11 @@
       margin-bottom: 3rem;
       padding-bottom: 1.5rem;
       border-bottom: 1px solid #27272a;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
     }
+    .header-text {}
     h1 {
       font-size: 0.85rem;
       font-weight: 600;
@@ -35,6 +49,15 @@
       color: #71717a;
       margin-top: 0.3rem;
     }
+    .back-link {
+      font-size: 0.72rem;
+      color: #52525b;
+      text-decoration: none;
+      transition: color 0.12s ease;
+      flex-shrink: 0;
+    }
+    .back-link:hover { color: #a1a1aa; }
+
     a {
       color: #a1a1aa;
       text-decoration: none;
@@ -42,6 +65,9 @@
     }
     a:hover { color: #fafafa; }
 
+    .how-it-works {
+      margin-bottom: 2.5rem;
+    }
     .how-it-works h2 {
       font-size: 0.75rem;
       font-weight: 600;
@@ -82,8 +108,33 @@
     .comparison td:first-child {
       color: #71717a;
     }
+    .comparison tr:hover td {
+      background: #18181b;
+    }
     .comparison .good { color: #4ade80; }
     .comparison .bad { color: #71717a; }
+
+    .tool-card {
+      padding: 1rem 1.2rem;
+      border: 1px solid #27272a;
+      border-radius: 4px;
+      margin-bottom: 0.8rem;
+    }
+    .tool-card .tool-name {
+      font-size: 0.75rem;
+      color: #d4d4d8;
+      font-weight: 500;
+      margin-bottom: 0.4rem;
+    }
+    .tool-card p {
+      font-size: 0.72rem;
+      color: #a1a1aa;
+      margin-bottom: 0;
+    }
+
+    .how-it-works .closing {
+      margin-top: 1.2rem;
+    }
 
     .footer {
       margin-top: 3rem;
@@ -92,28 +143,45 @@
       font-size: 0.65rem;
       color: #52525b;
     }
+    .footer a {
+      font-size: 0.65rem;
+      color: #52525b;
+    }
+    .footer a:hover { color: #a1a1aa; }
+
+    @media (max-width: 400px) {
+      body { padding: 1.5rem 1rem; }
+      .comparison { font-size: 0.6rem; }
+      .comparison th, .comparison td { padding: 0.3rem 0.4rem; }
+    }
   </style>
 </head>
 <body>
   <main>
     <div class="header">
-      <h1>agentic scripts <span>/</span> humans</h1>
-      <p class="subtitle">how compaction-driven orchestration works</p>
+      <div class="header-text">
+        <h1>agentic scripts <span>/</span> humans</h1>
+        <p class="subtitle">how compaction-driven orchestration works</p>
+      </div>
+      <a class="back-link" href="/">&larr; back</a>
     </div>
 
     <div class="how-it-works">
-      <h2>how it works</h2>
+      <h2>the problem</h2>
       <p>
-        These workflows orchestrate AI agents to explore codebases efficiently.
-        The key technique is <span class="highlight">compaction</span> — a pre-processing
-        step that strips source files down to their structural skeleton: function signatures,
-        imports, exports, component props, and type definitions. No implementation details.
-      </p>
-      <p>
-        Without compaction, an agent typically needs 10-20+ tool calls to understand a codebase —
+        Without a map, an AI agent typically needs 10-20+ tool calls to understand a codebase —
         globbing for files, reading each one in full, grepping for relationships. Each call is an
-        LLM round-trip. With compaction, the agent gets the full picture in 2-4 calls by grepping
-        a single pre-processed file.
+        LLM round-trip that costs tokens and time.
+      </p>
+    </div>
+
+    <div class="how-it-works">
+      <h2>the solution: compaction</h2>
+      <p>
+        <span class="highlight">Compaction</span> is a pre-processing step that strips source files
+        down to their structural skeleton: function signatures, imports, exports, component props,
+        and type definitions. No implementation details. The agent greps this single file instead of
+        reading source files one by one.
       </p>
       <table class="comparison">
         <tr>
@@ -149,61 +217,56 @@
     </div>
 
     <div class="how-it-works">
-      <h2>why JS tools reduce token use</h2>
+      <h2>why this works: out-of-context processing</h2>
       <p>
-        The core insight: <span class="highlight">JS scripts run outside the LLM context window</span>.
+        <span class="highlight">JS scripts run outside the LLM context window</span>.
         When an agent reads a 500-line file to find three function signatures, all 500 lines count as
-        input tokens — the LLM pays for implementation details it doesn't need. These tools do the
-        filtering in Node.js (zero tokens) and hand the agent only the structural output.
+        input tokens. These tools do the filtering in Node.js (zero tokens) and hand the agent only
+        the structural output.
       </p>
       <p>
         A typical 200-file project might be ~50k tokens of raw source. After compaction, the same
-        project is ~3-5k tokens of signatures. The agent greps that instead of reading files one by
-        one, which means <span class="highlight">fewer tool calls, less context pollution, and faster
-        convergence</span> on the right file to edit.
-      </p>
-      <p>
-        This also fixes a subtler problem: <span class="highlight">agents pick wrong files less often</span>.
-        Without a map, an agent guesses which files matter based on names and partial greps. With a
-        symbol index or dependency graph already in context, it jumps straight to the right location —
-        no exploratory reads that burn tokens and add noise.
+        project is ~3-5k tokens of signatures. This means
+        <span class="highlight">fewer tool calls, less context pollution, and faster convergence</span>
+        on the right file to edit.
       </p>
     </div>
 
     <div class="how-it-works">
       <h2>tools</h2>
 
-      <p>
-        <span class="highlight">compaction.js</span> — walks your project tree and strips every
-        JS/TS/Python file down to its skeleton: imports, exports, function signatures, component
-        props, hook usage, class declarations, and type definitions. The output is a single
-        <code>compacted_*.md</code> file the agent greps instead of reading source files one by one.
-        Supports React-specific patterns (memo, forwardRef, useState, useEffect with dependency
-        arrays, custom hooks).
-      </p>
+      <div class="tool-card">
+        <div class="tool-name">compaction.js</div>
+        <p>
+          Walks your project tree and strips every JS/TS/Python file down to its skeleton: imports,
+          exports, function signatures, component props, hook usage, class declarations, and type
+          definitions. Outputs a single <code>compacted_*.md</code> file. Supports React-specific
+          patterns (memo, forwardRef, useState, useEffect with dependency arrays, custom hooks).
+        </p>
+      </div>
 
-      <p>
-        <span class="highlight">dep-graph.js</span> — builds a full dependency graph from import/require
-        statements. For each file it records what it imports (forward edges), what imports it
-        (reverse edges / <code>imported-by</code>), and which external packages it uses. It also
-        runs cycle detection via DFS. Output is a <code>depgraph_*.md</code> with a summary,
-        circular dependency list, external package list, and per-file graph. Agents grep
-        <code>imported-by</code> to check blast radius before modifying a file.
-      </p>
+      <div class="tool-card">
+        <div class="tool-name">dep-graph.js</div>
+        <p>
+          Builds a full dependency graph from import/require statements. For each file it records
+          what it imports (forward edges), what imports it (reverse edges / <code>imported-by</code>),
+          and which external packages it uses. Runs cycle detection via DFS. Agents grep
+          <code>imported-by</code> to check blast radius before modifying a file.
+        </p>
+      </div>
 
-      <p>
-        <span class="highlight">symbols.js</span> — extracts every top-level symbol (components,
-        functions, hooks, classes, types, constants) with its file path, line number, and export
-        type (default, named, or internal). Output is a <code>symbols_*.md</code> with markdown
-        tables grouped by kind, sorted alphabetically. Lets agents answer "where is X defined?"
-        with a single grep instead of globbing the entire codebase.
-      </p>
+      <div class="tool-card">
+        <div class="tool-name">symbols.js</div>
+        <p>
+          Extracts every top-level symbol (components, functions, hooks, classes, types, constants)
+          with its file path, line number, and export type (default, named, or internal). Lets agents
+          answer "where is X defined?" with a single grep instead of globbing the entire codebase.
+        </p>
+      </div>
 
-      <p>
+      <p class="closing">
         All three scripts are zero-dependency (Node.js built-ins only), run in ~5-10 seconds,
-        and produce markdown files that persist across agent sessions. The orchestration protocol
-        enforces a strict order: compaction first, then grep the output, then read source files
-        only for gaps.
+        and produce markdown files that persist across agent sessions.
       </p>
     </div>
 

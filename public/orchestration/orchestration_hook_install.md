@@ -1,6 +1,6 @@
 # Orchestration Protocol — Claude Code Hook Installer
 
-> **Usage:** Paste this file as a prompt to Claude Code, or run: `cat .orchestration/orchestration_hook_install.md | claude --prompt -`
+> **Usage:** Paste this file as a prompt to Claude Code, or run: `claude -p "$(curl -sL https://agentic-orchestration-workflows.vercel.app/orchestration/orchestration_hook_install.md)"`
 
 You are an installer. Execute every step below exactly. Do not skip, summarize, or ask for confirmation. Work silently — only report the final verification table.
 

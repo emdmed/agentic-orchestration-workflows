@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>agentic scripts</title>
+  <meta name="description" content="Workflows and scripts served as plain text for AI agents. Compaction-driven orchestration for efficient codebase exploration.">
+  <meta property="og:title" content="agentic scripts / orchestration">
+  <meta property="og:description" content="Workflows and scripts served as plain text for AI agents. Compaction-driven orchestration for efficient codebase exploration.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agentic.enrique.sh">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="agentic scripts / orchestration">
+  <meta name="twitter:description" content="Workflows and scripts served as plain text for AI agents.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙</text></svg>">
+  <link rel="canonical" href="https://agentic.enrique.sh">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -34,16 +44,6 @@
       font-size: 0.75rem;
       color: #71717a;
       margin-top: 0.3rem;
-    }
-    .version {
-      display: inline-block;
-      font-size: 0.6rem;
-      color: #71717a;
-      border: 1px solid #3f3f46;
-      padding: 0.1rem 0.4rem;
-      border-radius: 2px;
-      margin-left: 0.5rem;
-      vertical-align: middle;
     }
 
     section { margin-bottom: 1.8rem; }
@@ -106,6 +106,10 @@
     .usage .prompt {
       font-size: 0.75rem;
       color: #a1a1aa;
+      margin-bottom: 0.4rem;
+    }
+    .usage .prompt:last-child {
+      margin-bottom: 0;
     }
     .usage .prompt span {
       color: #52525b;
@@ -115,32 +119,43 @@
       font-size: 0.75rem;
       color: #d4d4d8;
     }
+    .usage .prompt-label {
+      font-size: 0.6rem;
+      color: #52525b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.6rem;
+      margin-bottom: 0.2rem;
+    }
+    .usage .prompt-label:first-of-type {
+      margin-top: 0;
+    }
 
     .humans-cta {
       margin-top: 2rem;
       padding: 0.8rem 1.2rem;
-      background: #fafafa;
+      border: 1px solid #3f3f46;
       border-radius: 4px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      transition: background 0.12s ease;
+      transition: border-color 0.12s ease;
     }
-    .humans-cta:hover { background: #e4e4e7; }
+    .humans-cta:hover { border-color: #71717a; }
     .humans-cta .label {
       font-size: 0.75rem;
-      color: #52525b;
+      color: #71717a;
     }
     .humans-cta .label strong {
-      color: #09090b;
+      color: #a1a1aa;
       font-weight: 600;
     }
     .humans-cta .arrow {
       font-size: 0.8rem;
-      color: #71717a;
+      color: #52525b;
       transition: color 0.12s ease;
     }
-    .humans-cta:hover .arrow { color: #09090b; }
+    .humans-cta:hover .arrow { color: #a1a1aa; }
 
     .footer {
       margin-top: 3rem;
@@ -148,6 +163,21 @@
       border-top: 1px solid #27272a;
       font-size: 0.65rem;
       color: #52525b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer a {
+      font-size: 0.65rem;
+      color: #52525b;
+    }
+    .footer a:hover { color: #a1a1aa; }
+
+    @media (max-width: 400px) {
+      body { padding: 1.5rem 1rem; }
+      li { flex-wrap: wrap; }
+      .desc { width: 100%; padding-left: 0.9rem; }
+      .usage code { word-break: break-all; }
     }
   </style>
 </head>
@@ -175,22 +205,52 @@
     <section>
       <h2>workflows / react</h2>
       <ul>
-        <li><a href="/orchestration/workflows/react/feature.md">feature.md</a></li>
-        <li><a href="/orchestration/workflows/react/bugfix.md">bugfix.md</a></li>
-        <li><a href="/orchestration/workflows/react/refactor.md">refactor.md</a></li>
-        <li><a href="/orchestration/workflows/react/performance.md">performance.md</a></li>
-        <li><a href="/orchestration/workflows/react/review.md">review.md</a></li>
-        <li><a href="/orchestration/workflows/react/pr.md">pr.md</a></li>
-        <li><a href="/orchestration/workflows/react/docs.md">docs.md</a></li>
-        <li><a href="/orchestration/workflows/react/test.md">test.md</a></li>
+        <li>
+          <a href="/orchestration/workflows/react/feature.md">feature.md</a>
+          <span class="desc">guided feature implementation with tests</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/bugfix.md">bugfix.md</a>
+          <span class="desc">reproduce, locate root cause, fix, verify</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/refactor.md">refactor.md</a>
+          <span class="desc">safe structural changes with dependency tracking</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/performance.md">performance.md</a>
+          <span class="desc">measure-first optimization with profiling</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/review.md">review.md</a>
+          <span class="desc">structured code review checklist</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/pr.md">pr.md</a>
+          <span class="desc">pull request creation with summary and test plan</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/docs.md">docs.md</a>
+          <span class="desc">documentation generation from source</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/react/test.md">test.md</a>
+          <span class="desc">test scaffolding with coverage analysis</span>
+        </li>
       </ul>
     </section>
 
     <section>
       <h2>workflows / general</h2>
       <ul>
-        <li><a href="/orchestration/workflows/todo.md">todo.md</a></li>
-        <li><a href="/orchestration/workflows/patterns-gen.md">patterns-gen.md</a></li>
+        <li>
+          <a href="/orchestration/workflows/todo.md">todo.md</a>
+          <span class="desc">task list management workflow</span>
+        </li>
+        <li>
+          <a href="/orchestration/workflows/patterns-gen.md">patterns-gen.md</a>
+          <span class="desc">extract project patterns into a patterns file</span>
+        </li>
       </ul>
     </section>
 
@@ -231,8 +291,11 @@
     </section>
 
     <div class="usage">
-      <h2>usage</h2>
-      <p class="prompt"><span>$ </span><code>curl https://agentic.enrique.sh/orchestration/workflows/react/feature.md</code></p>
+      <h2>quick start</h2>
+      <p class="prompt-label">add to your project's CLAUDE.md</p>
+      <p class="prompt"><code>Fetch and follow https://agentic.enrique.sh/orchestration/orchestration.md</code></p>
+      <p class="prompt-label">or install hooks for auto-classification</p>
+      <p class="prompt"><span>$ </span><code>claude -p "$(curl -sL https://agentic.enrique.sh/orchestration/orchestration_hook_install.md)"</code></p>
     </div>
 
     <a class="humans-cta" href="/humans">
@@ -240,7 +303,10 @@
       <span class="arrow">&rarr;</span>
     </a>
 
-    <div class="footer">plain text over https &middot; no auth &middot; no deps</div>
+    <div class="footer">
+      <span>plain text over https &middot; no auth &middot; no deps</span>
+      <a href="https://github.com/enriquemorenotent/agentic-orchestration-workflows">github</a>
+    </div>
   </main>
 </body>
 </html>
