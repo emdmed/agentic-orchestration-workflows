@@ -23,7 +23,37 @@ mkdir -p ~/.claude/hooks
 mkdir -p .orchestration/tools/scripts
 ```
 
-## Step 2 — Write hook scripts
+## Step 2 — Ensure project CLAUDE.md
+
+The project's `CLAUDE.md` must contain the orchestration directive so every conversation loads the protocol. Check and update as needed.
+
+**Required content** (must appear in `CLAUDE.md`, exact text):
+
+```
+**CRITICAL: Read `.orchestration/orchestration.md` BEFORE any tool usage on every conversation. This is non-negotiable — even for "simple" or "exploration" tasks. Strictly implement its protocol before proceeding.**
+```
+
+**Rules:**
+- If `CLAUDE.md` does not exist at the project root, create it with just the line above.
+- If `CLAUDE.md` exists but does NOT contain the directive, **prepend** the directive as the first line (preserve all existing content below).
+- If `CLAUDE.md` already contains the directive, do nothing.
+
+```bash
+CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
+DIRECTIVE='**CRITICAL: Read `.orchestration/orchestration.md` BEFORE any tool usage on every conversation. This is non-negotiable — even for "simple" or "exploration" tasks. Strictly implement its protocol before proceeding.**'
+
+if [ ! -f "$CLAUDE_MD" ]; then
+  echo "$DIRECTIVE" > "$CLAUDE_MD"
+  echo "CLAUDE.md: CREATED"
+elif ! grep -qF '.orchestration/orchestration.md' "$CLAUDE_MD"; then
+  { echo "$DIRECTIVE"; echo ""; cat "$CLAUDE_MD"; } > "$CLAUDE_MD.tmp" && mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
+  echo "CLAUDE.md: UPDATED (directive prepended)"
+else
+  echo "CLAUDE.md: OK (directive already present)"
+fi
+```
+
+## Step 3 — Write hook scripts
 
 Create the following four files exactly as shown in `~/.claude/hooks/`.
 
@@ -378,13 +408,13 @@ fi
 exit 0
 ```
 
-## Step 3 — Make scripts executable
+## Step 4 — Make scripts executable
 
 ```bash
 chmod +x ~/.claude/hooks/classify.sh ~/.claude/hooks/maintain.sh ~/.claude/hooks/guard-explore.sh ~/.claude/hooks/rehydrate.sh
 ```
 
-## Step 4 — Register hooks in user-level settings
+## Step 5 — Register hooks in user-level settings
 
 Read `~/.claude/settings.json`. If it exists, **merge** the `hooks` key into the existing JSON (preserve all existing keys). If it does not exist, create it.
 
@@ -452,7 +482,7 @@ The hooks configuration to merge (replace `HOOKS_DIR` with the resolved absolute
 - Preserve all existing keys (`enabledPlugins`, `permissions`, `effortLevel`, etc.) untouched.
 - Write valid JSON (no trailing commas, no comments).
 
-## Step 5 — Verify installation
+## Step 6 — Verify installation
 
 Run each hook with test input and confirm exit code 0:
 
@@ -463,13 +493,19 @@ echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | CLAUDE_PROJECT_DIR="
 echo '{"source":"compact","session_id":"test"}' | CLAUDE_PROJECT_DIR="." ~/.claude/hooks/rehydrate.sh > /dev/null 2>&1 && echo "rehydrate: OK" || echo "rehydrate: FAIL"
 ```
 
+Validate CLAUDE.md:
+
+```bash
+grep -qF '.orchestration/orchestration.md' CLAUDE.md && echo "CLAUDE.md: OK" || echo "CLAUDE.md: MISSING DIRECTIVE"
+```
+
 Validate settings JSON:
 
 ```bash
 jq empty ~/.claude/settings.json && echo "settings: VALID JSON" || echo "settings: INVALID JSON"
 ```
 
-## Step 6 — Report
+## Step 7 — Report
 
 Print this summary table with actual results:
 
@@ -482,6 +518,7 @@ classify.sh       UserPromptSubmit   [OK/FAIL]
 maintain.sh       SessionStart       [OK/FAIL]
 guard-explore.sh  PreToolUse         [OK/FAIL]
 rehydrate.sh      (utility only)     [OK/FAIL]
+CLAUDE.md         —                  [OK/MISSING]
 settings.json     —                  [VALID/INVALID]
 ─────────────────────────────────────────────
 Hooks installed globally at ~/.claude/hooks/
