@@ -25,27 +25,37 @@ mkdir -p .orchestration/tools/scripts
 
 ## Step 2 — Write hook scripts
 
-Create the following three files exactly as shown in `~/.claude/hooks/`.
+Create the following four files exactly as shown in `~/.claude/hooks/`.
 
 ### `~/.claude/hooks/classify.sh`
 
 ```bash
 #!/bin/bash
 # Orchestration Hook: UserPromptSubmit
-# Auto-classifies user prompts and injects the matching workflow as context.
+# Injects the full orchestration protocol + auto-classified workflow as context.
+# This replaces the need to manually add "Read .orchestration/orchestration.md" to every prompt.
 
-set -euo pipefail
+set -uo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_input // ""')
+PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_input // ""' 2>/dev/null) || PROMPT=""
 PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
 
-CDN="https://agentic-orchestration-workflows.vercel.app/orchestration/workflows"
+CDN_BASE="https://agentic-orchestration-workflows.vercel.app"
+CDN="$CDN_BASE/orchestration/workflows"
 LOCAL="$PROJECT_DIR/.orchestration/workflows"
+ORCH_FILE="$PROJECT_DIR/.orchestration/orchestration.md"
+
+# --- Load full orchestration protocol ---
+PROTOCOL_CONTENT=""
+if [ -f "$ORCH_FILE" ]; then
+  PROTOCOL_CONTENT=$(cat "$ORCH_FILE")
+else
+  PROTOCOL_CONTENT=$(curl -sL --max-time 5 "$CDN_BASE/orchestration/orchestration.md" 2>/dev/null) || PROTOCOL_CONTENT=""
+fi
 
 # --- Classification Table ---
-# Each entry: "workflow_key|path_suffix|signal words (space-separated)"
 RULES=(
   "feature|react/feature.md|build create add implement new"
   "bugfix|react/bugfix.md|fix broken error crash bug"
@@ -79,51 +89,48 @@ for rule in "${RULES[@]}"; do
   fi
 done
 
-# --- No match: fallback to manual classification ---
-if [ "$BEST_SCORE" -eq 0 ]; then
-  echo "<orchestration-hook>"
-  echo "No auto-classification matched. Follow the orchestration protocol in .orchestration/orchestration.md to classify this task manually."
-  echo "</orchestration-hook>"
-  exit 0
-fi
-
-# --- Load workflow: local first, CDN fallback ---
-LOCAL_FILE="$LOCAL/$MATCHED_PATH"
+# --- Load matched workflow (if any) ---
 WORKFLOW_CONTENT=""
+CLASSIFICATION_NOTE=""
 
-if [ -f "$LOCAL_FILE" ]; then
-  WORKFLOW_CONTENT=$(cat "$LOCAL_FILE")
+if [ "$BEST_SCORE" -gt 0 ]; then
+  LOCAL_FILE="$LOCAL/$MATCHED_PATH"
+  if [ -f "$LOCAL_FILE" ]; then
+    WORKFLOW_CONTENT=$(cat "$LOCAL_FILE")
+  else
+    WORKFLOW_CONTENT=$(curl -sL --max-time 5 "$CDN/$MATCHED_PATH" 2>/dev/null) || WORKFLOW_CONTENT=""
+  fi
+
+  if [ -n "$WORKFLOW_CONTENT" ]; then
+    CLASSIFICATION_NOTE="AUTO-CLASSIFIED: $MATCHED_KEY workflow (confidence: $BEST_SCORE signal words matched)"
+  else
+    CLASSIFICATION_NOTE="Auto-classified as '$MATCHED_KEY' but workflow file not found. Fetch from: $CDN/$MATCHED_PATH"
+  fi
 else
-  WORKFLOW_CONTENT=$(curl -sL --max-time 5 "$CDN/$MATCHED_PATH" 2>/dev/null || echo "")
+  CLASSIFICATION_NOTE="No auto-classification matched. Use the classification table in the protocol to classify this task manually."
 fi
 
-if [ -z "$WORKFLOW_CONTENT" ]; then
-  echo "<orchestration-hook>"
-  echo "Auto-classified as '$MATCHED_KEY' but workflow file not found. Fetch it from: $CDN/$MATCHED_PATH"
-  echo "</orchestration-hook>"
-  exit 0
+# --- Output: inject full protocol + classification + workflow ---
+echo "<orchestration-hook>"
+
+# Always inject the full protocol
+if [ -n "$PROTOCOL_CONTENT" ]; then
+  echo "--- ORCHESTRATION PROTOCOL (implement strictly) ---"
+  echo "$PROTOCOL_CONTENT"
+  echo "--- END PROTOCOL ---"
+  echo ""
 fi
 
-# --- Output: inject workflow as context ---
-cat <<EOF
-<orchestration-hook>
-AUTO-CLASSIFIED: $MATCHED_KEY workflow (confidence: $BEST_SCORE signal words matched)
+echo "$CLASSIFICATION_NOTE"
 
-MANDATORY SEQUENCE — do not skip or reorder:
+if [ -n "$WORKFLOW_CONTENT" ]; then
+  echo ""
+  echo "--- WORKFLOW: $MATCHED_KEY ---"
+  echo "$WORKFLOW_CONTENT"
+  echo "--- END WORKFLOW ---"
+fi
 
-1. COMPACTION: Ensure .orchestration/tools/compacted_*.md exists (generate if missing)
-2. GREP COMPACTION (MANDATORY): Grep compacted_*.md for task-relevant terms (components, hooks, files). State findings before proceeding.
-   HARD RULE: Do NOT Read source files, Glob for exploration, or spawn Explore agents until you have grepped compaction and stated findings.
-3. READ SOURCE (only for gaps): Only if compaction grep lacks needed detail, read specific source files. State why compaction was insufficient.
-4. EMIT BINDING before any implementation tool use
-5. FOLLOW the workflow below
-6. EMIT COMPLETION when done
-
---- WORKFLOW: $MATCHED_KEY ---
-$WORKFLOW_CONTENT
---- END WORKFLOW ---
-</orchestration-hook>
-EOF
+echo "</orchestration-hook>"
 
 exit 0
 ```
@@ -135,7 +142,7 @@ exit 0
 # Orchestration Hook: SessionStart
 # Self-maintenance: checks CDN for protocol/script updates and downloads if needed.
 
-set -euo pipefail
+set -uo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 ORCH_DIR="$PROJECT_DIR/.orchestration"
@@ -218,13 +225,11 @@ exit 0
 # Guards against accessing source files before grepping compaction.
 # Uses a session marker to track whether compaction was grepped.
 # Blocks Read/Glob/Grep/Agent on source paths until compaction is grepped.
-# Uses JSON hookSpecificOutput with permissionDecision "deny" + exit 0.
 
-set -euo pipefail
+set -uo pipefail
 
 INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
-TOOL_INPUT=$(echo "$INPUT" | jq -r '.tool_input // "{}"')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || TOOL_NAME=""
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 MARKER="$PROJECT_DIR/.orchestration/tools/.compaction_grepped"
@@ -246,14 +251,14 @@ JSON
 
 # ─── Mark compaction as grepped when Grep targets compaction files ───
 if [ "$TOOL_NAME" = "Grep" ]; then
-  TARGET_PATH=$(echo "$TOOL_INPUT" | jq -r '.path // ""')
+  TARGET_PATH=$(echo "$INPUT" | jq -r '.tool_input.path // ""' 2>/dev/null) || TARGET_PATH=""
   # Create marker if grepping compacted files or orchestration tools directory
   if echo "$TARGET_PATH" | grep -qE "compacted_|\.orchestration/tools"; then
     touch "$MARKER"
     exit 0
   fi
   # Block Grep on source files if compaction not yet grepped
-  if [ ! -f "$MARKER" ] && echo "$TARGET_PATH" | grep -qE "(^|/)src/"; then
+  if [ ! -f "$MARKER" ] && [ -n "$TARGET_PATH" ] && echo "$TARGET_PATH" | grep -qE "(^|/)src/"; then
     deny
   fi
   exit 0
@@ -275,20 +280,20 @@ IS_SOURCE=false
 
 case "$TOOL_NAME" in
   Read)
-    FILE_PATH=$(echo "$TOOL_INPUT" | jq -r '.file_path // ""')
-    if echo "$FILE_PATH" | grep -qE "(^|/)src/"; then
+    FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || FILE_PATH=""
+    if [ -n "$FILE_PATH" ] && echo "$FILE_PATH" | grep -qE "(^|/)src/"; then
       IS_SOURCE=true
     fi
     ;;
   Glob)
-    PATTERN=$(echo "$TOOL_INPUT" | jq -r '.pattern // ""')
-    SEARCH_PATH=$(echo "$TOOL_INPUT" | jq -r '.path // ""')
-    if echo "$PATTERN" | grep -qE "(^|/)src/" || echo "$SEARCH_PATH" | grep -qE "(^|/)src/"; then
+    PATTERN=$(echo "$INPUT" | jq -r '.tool_input.pattern // ""' 2>/dev/null) || PATTERN=""
+    SEARCH_PATH=$(echo "$INPUT" | jq -r '.tool_input.path // ""' 2>/dev/null) || SEARCH_PATH=""
+    if echo "$PATTERN" | grep -qE "(^|/)src/" || { [ -n "$SEARCH_PATH" ] && echo "$SEARCH_PATH" | grep -qE "(^|/)src/"; }; then
       IS_SOURCE=true
     fi
     ;;
   Agent)
-    SUBTYPE=$(echo "$TOOL_INPUT" | jq -r '.subagent_type // ""' 2>/dev/null)
+    SUBTYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null) || SUBTYPE=""
     if [ "$SUBTYPE" = "Explore" ]; then
       IS_SOURCE=true
     fi
@@ -304,10 +309,40 @@ fi
 deny
 ```
 
+### `~/.claude/hooks/rehydrate.sh`
+
+This hook re-injects the full orchestration protocol after context compaction. Note: `PostCompact` is not a registerable hook event, so this script is sourced by the rehydration system-reminder or can be called manually.
+
+```bash
+#!/bin/bash
+# Orchestration Hook: PostCompact
+# Re-injects the orchestration protocol after context compaction.
+
+set -uo pipefail
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+ORCH_FILE="$PROJECT_DIR/.orchestration/orchestration.md"
+
+if [ -f "$ORCH_FILE" ]; then
+  PROTOCOL_CONTENT=$(cat "$ORCH_FILE")
+  echo "<orchestration-rehydrate>"
+  echo "Context was compacted. The orchestration protocol is still active."
+  echo ""
+  echo "--- ORCHESTRATION PROTOCOL (implement strictly) ---"
+  echo "$PROTOCOL_CONTENT"
+  echo "--- END PROTOCOL ---"
+  echo "</orchestration-rehydrate>"
+else
+  echo "<orchestration-rehydrate>Orchestration protocol file not found at $ORCH_FILE</orchestration-rehydrate>"
+fi
+
+exit 0
+```
+
 ## Step 3 — Make scripts executable
 
 ```bash
-chmod +x ~/.claude/hooks/classify.sh ~/.claude/hooks/maintain.sh ~/.claude/hooks/guard-explore.sh
+chmod +x ~/.claude/hooks/classify.sh ~/.claude/hooks/maintain.sh ~/.claude/hooks/guard-explore.sh ~/.claude/hooks/rehydrate.sh
 ```
 
 ## Step 4 — Register hooks in user-level settings
@@ -317,7 +352,7 @@ Read `~/.claude/settings.json`. If it exists, **merge** the `hooks` key into the
 **IMPORTANT — Claude Code settings requirements:**
 - Command paths must be **absolute** — `~` and `$HOME` do NOT expand in JSON. Resolve the user's home directory and write the full path (e.g., `/home/user/.claude/hooks/classify.sh`).
 - Each hook group must include `"matcher": "*"`.
-- `PostCompact` is **NOT** a valid hook event — do not use it.
+- `PostCompact` is **NOT** a valid hook event — do not register `rehydrate.sh` in settings.json. It is kept as a utility script only.
 - `timeout` values are in **seconds**.
 - PreToolUse deny decisions use JSON `hookSpecificOutput` with `permissionDecision: "deny"` + exit 0 (exit 2 silently drops output).
 
@@ -386,6 +421,7 @@ Run each hook with test input and confirm exit code 0:
 echo '{"prompt":"add a new component","session_id":"test"}' | CLAUDE_PROJECT_DIR="." ~/.claude/hooks/classify.sh > /dev/null 2>&1 && echo "classify: OK" || echo "classify: FAIL"
 echo '{"source":"startup","session_id":"test"}' | CLAUDE_PROJECT_DIR="." ~/.claude/hooks/maintain.sh > /dev/null 2>&1 && echo "maintain: OK" || echo "maintain: FAIL"
 echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | CLAUDE_PROJECT_DIR="." ~/.claude/hooks/guard-explore.sh > /dev/null 2>&1 && echo "guard-explore: OK" || echo "guard-explore: FAIL"
+echo '{"source":"compact","session_id":"test"}' | CLAUDE_PROJECT_DIR="." ~/.claude/hooks/rehydrate.sh > /dev/null 2>&1 && echo "rehydrate: OK" || echo "rehydrate: FAIL"
 ```
 
 Validate settings JSON:
@@ -406,6 +442,7 @@ Hook              Event              Status
 classify.sh       UserPromptSubmit   [OK/FAIL]
 maintain.sh       SessionStart       [OK/FAIL]
 guard-explore.sh  PreToolUse         [OK/FAIL]
+rehydrate.sh      (utility only)     [OK/FAIL]
 settings.json     —                  [VALID/INVALID]
 ─────────────────────────────────────────────
 Hooks installed globally at ~/.claude/hooks/
@@ -418,8 +455,11 @@ Active for ALL projects. Restart Claude Code to activate.
 | Constraint | Detail |
 |---|---|
 | No tilde expansion | `~` and `$HOME` don't expand in settings.json `command` fields — use absolute paths |
-| No `PostCompact` event | Not a valid Claude Code hook event — rehydrate.sh cannot be registered |
+| No `PostCompact` event | Not a valid Claude Code hook event — `rehydrate.sh` is kept as a utility script, not registered in settings |
 | Matcher required | Each hook group needs `"matcher": "*"` |
 | PreToolUse deny format | Must output JSON `hookSpecificOutput` with `permissionDecision: "deny"` + exit 0. Exit code 2 blocks silently (drops output) |
 | Timeout in seconds | Not milliseconds |
 | JSON output on exit 0 only | Hook JSON output is only parsed when exit code is 0 |
+| No `set -e` in hooks | Use `set -uo pipefail` (not `set -euo pipefail`) — `-e` causes silent crashes on `jq` failures, producing "No stderr output" errors |
+| Parse from `$INPUT` directly | Extract `jq` fields from original stdin JSON via `.tool_input.field` — do NOT extract `tool_input` as intermediate string then re-parse (breaks on complex content like Agent prompts) |
+| Always add `jq` fallbacks | Every `jq` extraction should have `2>/dev/null) \|\| VAR=""` to prevent non-zero exits |
