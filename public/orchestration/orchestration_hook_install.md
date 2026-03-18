@@ -38,6 +38,12 @@ Create the following four files exactly as shown in `~/.claude/hooks/`.
 set -uo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+
+# Skip if project has no orchestration setup
+if [ ! -d "$PROJECT_DIR/.orchestration" ]; then
+  exit 0
+fi
+
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_input // ""' 2>/dev/null) || PROMPT=""
 PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
@@ -55,16 +61,23 @@ else
   PROTOCOL_CONTENT=$(curl -sL --max-time 5 "$CDN_BASE/orchestration/orchestration.md" 2>/dev/null) || PROTOCOL_CONTENT=""
 fi
 
+# --- Detect project technology for workflow routing ---
+# React (.jsx/.tsx) → workflows/react/ | .NET (.cs) → workflows/ | Other → workflows/
+TECH_PREFIX=""
+if find "$PROJECT_DIR" -maxdepth 4 -name '*.tsx' -o -name '*.jsx' 2>/dev/null | head -1 | grep -q .; then
+  TECH_PREFIX="react/"
+fi
+
 # --- Classification Table ---
 RULES=(
-  "feature|react/feature.md|build create add implement new"
-  "bugfix|react/bugfix.md|fix broken error crash bug"
-  "refactor|react/refactor.md|clean improve restructure rename refactor"
-  "performance|react/performance.md|slow optimize performance speed"
-  "review|react/review.md|review check merge"
-  "pr|react/pr.md|pr pull request"
-  "test|react/test.md|test spec coverage e2e unit"
-  "docs|react/docs.md|document readme explain"
+  "feature|${TECH_PREFIX}feature.md|build create add implement new"
+  "bugfix|${TECH_PREFIX}bugfix.md|fix broken error crash bug"
+  "refactor|${TECH_PREFIX}refactor.md|clean improve restructure rename refactor"
+  "performance|${TECH_PREFIX}performance.md|slow optimize performance speed"
+  "review|${TECH_PREFIX}review.md|review check merge"
+  "pr|${TECH_PREFIX}pr.md|pr pull request"
+  "test|${TECH_PREFIX}test.md|test spec coverage e2e unit"
+  "docs|${TECH_PREFIX}docs.md|document readme explain"
   "todo|todo.md|complex multi-step plan"
   "patterns-gen|patterns-gen.md|patterns conventions generate"
 )
@@ -145,6 +158,12 @@ exit 0
 set -uo pipefail
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+
+# Skip if project has no orchestration setup
+if [ ! -d "$PROJECT_DIR/.orchestration" ]; then
+  exit 0
+fi
+
 ORCH_DIR="$PROJECT_DIR/.orchestration"
 SCRIPTS_DIR="$ORCH_DIR/tools/scripts"
 CDN_BASE="https://agentic-orchestration-workflows.vercel.app"
@@ -207,6 +226,20 @@ for pattern in compacted depgraph symbols; do
   ls -t "$ORCH_DIR/tools/${pattern}_"*.md 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
 done
 
+# --- 4. Check artifact staleness via git-sha ---
+CURRENT_SHA=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")
+HAS_CHANGES=$(git -C "$PROJECT_DIR" status --short 2>/dev/null | head -1)
+if [ -n "$CURRENT_SHA" ]; then
+  for artifact in "$ORCH_DIR/tools/"compacted_*.md "$ORCH_DIR/tools/"depgraph_*.md "$ORCH_DIR/tools/"symbols_*.md; do
+    [ -f "$artifact" ] || continue
+    ARTIFACT_SHA=$(sed -n 's/.*git-sha:[[:space:]]*\([0-9a-f]\{7,\}\).*/\1/p' "$artifact" 2>/dev/null | head -1) || ARTIFACT_SHA=""
+    if [ -z "$ARTIFACT_SHA" ] || [ "$ARTIFACT_SHA" != "$CURRENT_SHA" ] || [ -n "$HAS_CHANGES" ]; then
+      rm -f "$artifact"
+      UPDATES="${UPDATES}Removed stale artifact: $(basename "$artifact"). "
+    fi
+  done
+fi
+
 # --- Output ---
 if [ -n "$UPDATES" ]; then
   echo "<orchestration-maintenance>$UPDATES</orchestration-maintenance>"
@@ -224,14 +257,20 @@ exit 0
 # Orchestration Hook: PreToolUse
 # Guards against accessing source files before grepping compaction.
 # Uses a session marker to track whether compaction was grepped.
-# Blocks Read/Glob/Grep/Agent on source paths until compaction is grepped.
+# Blocks Read/Glob/Grep/Task(Explore) on source paths until compaction is grepped.
 
 set -uo pipefail
+
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
+
+# Skip if project has no orchestration setup
+if [ ! -d "$PROJECT_DIR/.orchestration" ]; then
+  exit 0
+fi
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || TOOL_NAME=""
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 MARKER="$PROJECT_DIR/.orchestration/tools/.compaction_grepped"
 
 DENY_REASON="BLOCKED: You must grep compacted_*.md BEFORE accessing source files. Required sequence: 1) Grep .orchestration/tools/compacted_*.md for task-relevant terms, 2) State findings from compaction grep, 3) Only then access source files (state why compaction was insufficient). This tool call has been denied. Grep compaction first."
@@ -264,9 +303,9 @@ if [ "$TOOL_NAME" = "Grep" ]; then
   exit 0
 fi
 
-# ─── Only guard Read, Glob, Agent ───
+# ─── Only guard Read, Glob, Task ───
 case "$TOOL_NAME" in
-  Read|Glob|Agent) ;;
+  Read|Glob|Task) ;;
   *) exit 0 ;;
 esac
 
@@ -292,7 +331,7 @@ case "$TOOL_NAME" in
       IS_SOURCE=true
     fi
     ;;
-  Agent)
+  Task)
     SUBTYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // ""' 2>/dev/null) || SUBTYPE=""
     if [ "$SUBTYPE" = "Explore" ]; then
       IS_SOURCE=true
