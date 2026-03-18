@@ -270,6 +270,71 @@
       </p>
     </div>
 
+    <div class="how-it-works">
+      <h2>claude code hooks</h2>
+      <p>
+        <a href="https://docs.anthropic.com/en/docs/claude-code" style="color:#d4d4d8;font-weight:500">Claude Code</a>
+        supports <span class="highlight">hooks</span> — shell scripts that run automatically at specific
+        points in the agent lifecycle. This project uses four hooks to make orchestration fully automatic,
+        with no manual prompting required.
+      </p>
+
+      <div class="tool-card">
+        <div class="tool-name">classify.sh <span style="color:#52525b;font-weight:400">· UserPromptSubmit</span></div>
+        <p>
+          Fires on every prompt. Reads the user's message, matches signal words against a classification
+          table (feature, bugfix, refactor, etc.), and injects the full orchestration protocol plus the
+          matched workflow into the agent's context. Also auto-detects the project's technology
+          (React, .NET, or general) for correct workflow routing. If the project has no
+          <code>.orchestration/</code> directory, it silently does nothing.
+        </p>
+      </div>
+
+      <div class="tool-card">
+        <div class="tool-name">maintain.sh <span style="color:#52525b;font-weight:400">· SessionStart</span></div>
+        <p>
+          Runs once when a session starts. Compares the local <code>orchestration.md</code> against the CDN
+          version and updates if stale. Fetches the tool script manifest and re-downloads any scripts whose
+          sha256 hash has changed. Cleans up old compaction/dep-graph/symbol artifacts and removes any whose
+          embedded <code>git-sha</code> no longer matches <code>HEAD</code>.
+        </p>
+      </div>
+
+      <div class="tool-card">
+        <div class="tool-name">guard-explore.sh <span style="color:#52525b;font-weight:400">· PreToolUse</span></div>
+        <p>
+          Enforces the compaction-first gate. Blocks the agent from reading source files, globbing
+          <code>src/</code>, or spawning Explore agents until it has grepped the compacted output first.
+          This prevents the agent from falling back to expensive file-by-file exploration and ensures
+          compaction is always used. Uses a session marker file so the gate only applies once per session.
+        </p>
+      </div>
+
+      <div class="tool-card">
+        <div class="tool-name">rehydrate.sh <span style="color:#52525b;font-weight:400">· utility</span></div>
+        <p>
+          Re-injects the orchestration protocol after context compaction (when the LLM's context window is
+          compressed). Not registered as a hook event (Claude Code doesn't have a <code>PostCompact</code>
+          event), but kept as a utility script that can be called manually or by future hook events.
+        </p>
+      </div>
+    </div>
+
+    <div class="how-it-works">
+      <h2>the hook installer</h2>
+      <p>
+        The <a href="/orchestration/orchestration_hook_install.md" style="color:#d4d4d8;font-weight:500">hook installer</a>
+        is a self-executing prompt — you pipe it into Claude Code and it installs everything automatically:
+      </p>
+      <p>
+        It writes all four hook scripts to <code>~/.claude/hooks/</code>, registers them in
+        <code>~/.claude/settings.json</code> with the correct absolute paths, matchers, and timeouts,
+        then verifies each hook exits cleanly and the settings file is valid JSON. The hooks are installed
+        <span class="highlight">globally</span>, so they activate for every project. Projects without an
+        <code>.orchestration/</code> directory are silently skipped.
+      </p>
+    </div>
+
     <div class="footer"><a href="/">&larr; back</a></div>
   </main>
 </body>
