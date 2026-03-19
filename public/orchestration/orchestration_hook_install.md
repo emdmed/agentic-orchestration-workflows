@@ -74,6 +74,10 @@ if [ ! -d "$PROJECT_DIR/.orchestration" ]; then
   exit 0
 fi
 
+# --- Per-prompt: clear markers so each prompt starts fresh ---
+rm -f "$PROJECT_DIR/.orchestration/tools/.exempt"
+rm -f "$PROJECT_DIR/.orchestration/tools/.compaction_grepped"
+
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_input // ""' 2>/dev/null) || PROMPT=""
 PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
@@ -153,6 +157,41 @@ else
   CLASSIFICATION_NOTE="No auto-classification matched. Use the classification table in the protocol to classify this task manually."
 fi
 
+# --- EXEMPT detection ---
+# EXEMPT rule: single file, 1-2 ops, zero architecture impact, obvious correctness, no codebase search needed.
+EXEMPT="false"
+
+# Step 1: NEVER-EXEMPT keywords (architecture impact / multi-file / codebase search)
+NEVER_EXEMPT_PATTERN="\b(rename|refactor|restructure|move|delete|remove|replace|shared|component|import|export|across|everywhere|every|all files|multiple files|codebase|blast radius|dep graph|dependency)\b"
+HAS_NEVER_EXEMPT=false
+if echo "$PROMPT_LOWER" | grep -qEi "$NEVER_EXEMPT_PATTERN"; then
+  HAS_NEVER_EXEMPT=true
+fi
+
+# Step 2: EXEMPT-signal keywords (single-file, low-op, obvious-correctness)
+EXEMPT_SIGNAL_PATTERN="\b(typo|string literal|bump version|update version|change text|fix text|wording|label|read|show|look|open|view|what does|what is|how does|explain|describe|tell me|print)\b"
+HAS_EXEMPT_SIGNAL=false
+if echo "$PROMPT_LOWER" | grep -qEi "$EXEMPT_SIGNAL_PATTERN"; then
+  HAS_EXEMPT_SIGNAL=true
+fi
+
+# Step 3: Decision
+if [ "$HAS_NEVER_EXEMPT" = true ]; then
+  EXEMPT="false"
+elif [ "$HAS_EXEMPT_SIGNAL" = true ]; then
+  EXEMPT="true"
+elif [ "$BEST_SCORE" -ge 2 ]; then
+  EXEMPT="false"
+else
+  EXEMPT="true"
+fi
+
+# Write marker if EXEMPT
+if [ "$EXEMPT" = "true" ]; then
+  mkdir -p "$PROJECT_DIR/.orchestration/tools"
+  touch "$PROJECT_DIR/.orchestration/tools/.exempt"
+fi
+
 # --- Output: inject full protocol + classification + workflow ---
 echo "<orchestration-hook>"
 
@@ -165,6 +204,7 @@ if [ -n "$PROTOCOL_CONTENT" ]; then
 fi
 
 echo "$CLASSIFICATION_NOTE"
+echo "EXEMPT-DETECTED: $EXEMPT"
 
 if [ -n "$WORKFLOW_CONTENT" ]; then
   echo ""
@@ -295,6 +335,11 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 
 # Skip if project has no orchestration setup
 if [ ! -d "$PROJECT_DIR/.orchestration" ]; then
+  exit 0
+fi
+
+# Skip guard entirely for EXEMPT tasks
+if [ -f "$PROJECT_DIR/.orchestration/tools/.exempt" ]; then
   exit 0
 fi
 
