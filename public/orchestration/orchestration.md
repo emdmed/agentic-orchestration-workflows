@@ -99,6 +99,8 @@ Grep `compacted_*.md` for relevant components, hooks, functions, imports. Extrac
 
 **HARD RULE:** Do NOT `Read` source files, `Glob` for exploration, or spawn Explore agents until you have grepped compaction and stated findings.
 
+**NO CONTEXT REUSE:** Having files in context from a previous task does NOT skip the gated sequence. Each new task must grep compaction independently — context files may be stale if the codebase changed between tasks.
+
 ### Step 3: Read source / broad exploration (only for gaps)
 
 After Step 2, read specific source files when compaction lacks needed detail (function bodies, logic, CSS, config). If compaction doesn't cover a file type or grep returns nothing, fall back to `Glob`, `Grep` on source, or Explore agents — state why compaction was insufficient.

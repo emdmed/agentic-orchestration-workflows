@@ -348,7 +348,7 @@ TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || TOOL_NAME="
 
 MARKER="$PROJECT_DIR/.orchestration/tools/.compaction_grepped"
 
-DENY_REASON="BLOCKED: You must grep compacted_*.md BEFORE accessing source files. Required sequence: 1) Grep .orchestration/tools/compacted_*.md for task-relevant terms, 2) State findings from compaction grep, 3) Only then access source files (state why compaction was insufficient). This tool call has been denied. Grep compaction first."
+DENY_REASON="BLOCKED: You must grep compacted_*.md BEFORE accessing source files. Required sequence: 1) Generate compaction if missing (node .orchestration/tools/scripts/compaction.js <project-root>), 2) Grep .orchestration/tools/compacted_*.md for task-relevant terms, 3) State findings from compaction grep, 4) Only then access source files (state why compaction was insufficient). This tool call has been denied."
 
 deny() {
   cat <<JSON
@@ -361,6 +361,21 @@ deny() {
 }
 JSON
   exit 0
+}
+
+# ─── Helper: check if a path is safe (orchestration infra, not source code) ───
+is_safe_path() {
+  local path="$1"
+  # Always safe: orchestration dir, patterns dir, CLAUDE.md
+  if echo "$path" | grep -qE "(\.orchestration/|\.patterns/|CLAUDE\.md$)"; then
+    return 0
+  fi
+  # Safe: non-code config files at any depth (json, yaml, toml, md, txt, env, lock, etc.)
+  if echo "$path" | grep -qE "\.(json|yaml|yml|toml|md|txt|env|lock|config|gitignore|eslintrc|prettierrc)$"; then
+    return 0
+  fi
+  # Not safe — treat as source
+  return 1
 }
 
 # ─── Mark compaction as grepped when Grep targets compaction files ───
@@ -386,7 +401,7 @@ JSON
     fi
   fi
   # Block Grep on source files if compaction not yet grepped
-  if [ ! -f "$MARKER" ] && [ -n "$TARGET_PATH" ] && echo "$TARGET_PATH" | grep -qE "(^|/)src/"; then
+  if [ ! -f "$MARKER" ] && [ -n "$TARGET_PATH" ] && ! is_safe_path "$TARGET_PATH"; then
     deny
   fi
   exit 0
@@ -403,20 +418,25 @@ if [ -f "$MARKER" ]; then
   exit 0
 fi
 
-# ─── Check if targeting source files ───
+# ─── Check if targeting source files (inverted: block unless safe path) ───
 IS_SOURCE=false
 
 case "$TOOL_NAME" in
   Read)
     FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || FILE_PATH=""
-    if [ -n "$FILE_PATH" ] && echo "$FILE_PATH" | grep -qE "(^|/)src/"; then
+    if [ -n "$FILE_PATH" ] && ! is_safe_path "$FILE_PATH"; then
       IS_SOURCE=true
     fi
     ;;
   Glob)
     PATTERN=$(echo "$INPUT" | jq -r '.tool_input.pattern // ""' 2>/dev/null) || PATTERN=""
     SEARCH_PATH=$(echo "$INPUT" | jq -r '.tool_input.path // ""' 2>/dev/null) || SEARCH_PATH=""
-    if echo "$PATTERN" | grep -qE "(^|/)src/" || { [ -n "$SEARCH_PATH" ] && echo "$SEARCH_PATH" | grep -qE "(^|/)src/"; }; then
+    # Allow globs targeting orchestration/patterns dirs
+    if echo "$PATTERN" | grep -qE "(\.orchestration|\.patterns)"; then
+      IS_SOURCE=false
+    elif echo "$PATTERN" | grep -qE "\*\.(tsx?|jsx?|cs|css|scss|html|py|go|rs|vue|svelte)"; then
+      IS_SOURCE=true
+    elif [ -n "$SEARCH_PATH" ] && ! is_safe_path "$SEARCH_PATH"; then
       IS_SOURCE=true
     fi
     ;;
