@@ -366,10 +366,24 @@ JSON
 # ─── Mark compaction as grepped when Grep targets compaction files ───
 if [ "$TOOL_NAME" = "Grep" ]; then
   TARGET_PATH=$(echo "$INPUT" | jq -r '.tool_input.path // ""' 2>/dev/null) || TARGET_PATH=""
-  # Create marker if grepping compacted files or orchestration tools directory
+  # Create marker if grepping compacted files — but ONLY if a compaction artifact actually exists
   if echo "$TARGET_PATH" | grep -qE "compacted_|\.orchestration/tools"; then
-    touch "$MARKER"
-    exit 0
+    if ls "$PROJECT_DIR/.orchestration/tools/compacted_"*.md >/dev/null 2>&1; then
+      touch "$MARKER"
+      exit 0
+    else
+      # Compaction artifact doesn't exist — deny and tell agent to generate it
+      cat <<JSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "BLOCKED: No compaction artifact exists at .orchestration/tools/compacted_*.md. You must generate it FIRST before grepping. Run: node .orchestration/tools/scripts/compaction.js <project-root> — then grep the output."
+  }
+}
+JSON
+      exit 0
+    fi
   fi
   # Block Grep on source files if compaction not yet grepped
   if [ ! -f "$MARKER" ] && [ -n "$TARGET_PATH" ] && echo "$TARGET_PATH" | grep -qE "(^|/)src/"; then
