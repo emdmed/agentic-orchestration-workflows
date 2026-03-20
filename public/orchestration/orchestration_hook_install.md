@@ -25,12 +25,12 @@ mkdir -p .orchestration/tools/scripts
 
 ## Step 2 — Ensure project CLAUDE.md
 
-The project's `CLAUDE.md` must contain the orchestration directive so every conversation loads the protocol. Check and update as needed.
+The project's `CLAUDE.md` must contain the orchestration directive so every conversation loads the protocol.
 
 **Required content** (must appear in `CLAUDE.md`, exact text):
 
 ```
-**CRITICAL: Read `.orchestration/orchestration.md` BEFORE any tool usage on every conversation. This is non-negotiable — even for "simple" or "exploration" tasks. Strictly implement its protocol before proceeding.**
+**CRITICAL: Follow the orchestration protocol injected by hooks on every prompt. This is non-negotiable — even for "simple" or "exploration" tasks.**
 ```
 
 **Rules:**
@@ -40,12 +40,12 @@ The project's `CLAUDE.md` must contain the orchestration directive so every conv
 
 ```bash
 CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
-DIRECTIVE='**CRITICAL: Read `.orchestration/orchestration.md` BEFORE any tool usage on every conversation. This is non-negotiable — even for "simple" or "exploration" tasks. Strictly implement its protocol before proceeding.**'
+DIRECTIVE='**CRITICAL: Follow the orchestration protocol injected by hooks on every prompt. This is non-negotiable — even for "simple" or "exploration" tasks.**'
 
 if [ ! -f "$CLAUDE_MD" ]; then
   echo "$DIRECTIVE" > "$CLAUDE_MD"
   echo "CLAUDE.md: CREATED"
-elif ! grep -qF '.orchestration/orchestration.md' "$CLAUDE_MD"; then
+elif ! grep -qF 'orchestration protocol' "$CLAUDE_MD"; then
   { echo "$DIRECTIVE"; echo ""; cat "$CLAUDE_MD"; } > "$CLAUDE_MD.tmp" && mv "$CLAUDE_MD.tmp" "$CLAUDE_MD"
   echo "CLAUDE.md: UPDATED (directive prepended)"
 else
@@ -61,9 +61,9 @@ Create the following four files exactly as shown in `~/.claude/hooks/`.
 
 ```bash
 #!/bin/bash
-# Orchestration Hook: UserPromptSubmit
-# Injects the full orchestration protocol + auto-classified workflow as context.
-# This replaces the need to manually add "Read .orchestration/orchestration.md" to every prompt.
+# Orchestration Hook: UserPromptSubmit (v2.0.0)
+# Session-aware injection: full protocol on first prompt, condensed reminder on subsequent.
+# Auto-classifies workflow, detects EXEMPT tasks, injects patterns.
 
 set -uo pipefail
 
@@ -86,13 +86,26 @@ CDN_BASE="https://agentic-orchestration-workflows.vercel.app"
 CDN="$CDN_BASE/orchestration/workflows"
 LOCAL="$PROJECT_DIR/.orchestration/workflows"
 ORCH_FILE="$PROJECT_DIR/.orchestration/orchestration.md"
+PROTOCOL_MARKER="$PROJECT_DIR/.orchestration/tools/.protocol_injected"
 
-# --- Load full orchestration protocol ---
+# --- Session-aware protocol loading ---
 PROTOCOL_CONTENT=""
-if [ -f "$ORCH_FILE" ]; then
-  PROTOCOL_CONTENT=$(cat "$ORCH_FILE")
-else
-  PROTOCOL_CONTENT=$(curl -sL --max-time 5 "$CDN_BASE/orchestration/orchestration.md" 2>/dev/null) || PROTOCOL_CONTENT=""
+IS_FIRST_PROMPT=true
+
+if [ -f "$PROTOCOL_MARKER" ]; then
+  IS_FIRST_PROMPT=false
+fi
+
+if [ "$IS_FIRST_PROMPT" = true ]; then
+  # First prompt: load full protocol
+  if [ -f "$ORCH_FILE" ]; then
+    PROTOCOL_CONTENT=$(cat "$ORCH_FILE")
+  else
+    PROTOCOL_CONTENT=$(curl -sL --max-time 5 "$CDN_BASE/orchestration/orchestration.md" 2>/dev/null) || PROTOCOL_CONTENT=""
+  fi
+  # Set marker for subsequent prompts
+  mkdir -p "$PROJECT_DIR/.orchestration/tools"
+  touch "$PROTOCOL_MARKER"
 fi
 
 # --- Detect project technology for workflow routing ---
@@ -157,33 +170,42 @@ else
   CLASSIFICATION_NOTE="No auto-classification matched. Use the classification table in the protocol to classify this task manually."
 fi
 
-# --- EXEMPT detection ---
+# --- EXEMPT detection (safe default: NOT exempt) ---
 # EXEMPT rule: single file, 1-2 ops, zero architecture impact, obvious correctness, no codebase search needed.
 EXEMPT="false"
 
 # Step 1: NEVER-EXEMPT keywords (architecture impact / multi-file / codebase search)
-NEVER_EXEMPT_PATTERN="\b(rename|refactor|restructure|move|delete|remove|replace|shared|component|import|export|across|everywhere|every|all files|multiple files|codebase|blast radius|dep graph|dependency)\b"
+NEVER_EXEMPT_PATTERN="\b(rename|refactor|restructure|move|delete|remove|replace|shared|component|import|export|across|everywhere|every|all files|multiple files|codebase|blast radius|dep graph|dependency|schema|migration|database|api|endpoint|route|middleware|auth)\b"
 HAS_NEVER_EXEMPT=false
 if echo "$PROMPT_LOWER" | grep -qEi "$NEVER_EXEMPT_PATTERN"; then
   HAS_NEVER_EXEMPT=true
 fi
 
-# Step 2: EXEMPT-signal keywords (single-file, low-op, obvious-correctness)
-EXEMPT_SIGNAL_PATTERN="\b(typo|string literal|bump version|update version|change text|fix text|wording|label|read|show|look|open|view|what does|what is|how does|explain|describe|tell me|print)\b"
-HAS_EXEMPT_SIGNAL=false
-if echo "$PROMPT_LOWER" | grep -qEi "$EXEMPT_SIGNAL_PATTERN"; then
-  HAS_EXEMPT_SIGNAL=true
+# Step 2: Split EXEMPT signals into read-only and trivial-edit categories
+READONLY_PATTERN="\b(what does|what is|how does|explain|describe|tell me|show me|look at|read|view|open|print|list)\b"
+TRIVIAL_EDIT_PATTERN="\b(typo|string literal|bump version|update version|change text|fix text|wording|label|fix typo)\b"
+HAS_READONLY=false
+HAS_TRIVIAL_EDIT=false
+if echo "$PROMPT_LOWER" | grep -qEi "$READONLY_PATTERN"; then
+  HAS_READONLY=true
+fi
+if echo "$PROMPT_LOWER" | grep -qEi "$TRIVIAL_EDIT_PATTERN"; then
+  HAS_TRIVIAL_EDIT=true
 fi
 
 # Step 3: Decision
 if [ "$HAS_NEVER_EXEMPT" = true ]; then
+  # Never exempt regardless of other signals
   EXEMPT="false"
-elif [ "$HAS_EXEMPT_SIGNAL" = true ]; then
+elif [ "$HAS_TRIVIAL_EDIT" = true ]; then
+  # Trivial edits are always exempt
   EXEMPT="true"
-elif [ "$BEST_SCORE" -ge 2 ]; then
-  EXEMPT="false"
+elif [ "$HAS_READONLY" = true ] && [ "$BEST_SCORE" -le 1 ]; then
+  # Read-only queries are exempt only if ≤1 workflow signal word matched
+  EXEMPT="true"
 else
-  EXEMPT="true"
+  # Unknown prompts → NOT EXEMPT (safe default)
+  EXEMPT="false"
 fi
 
 # Write marker if EXEMPT
@@ -192,15 +214,40 @@ if [ "$EXEMPT" = "true" ]; then
   touch "$PROJECT_DIR/.orchestration/tools/.exempt"
 fi
 
-# --- Output: inject full protocol + classification + workflow ---
+# --- Load patterns if not EXEMPT ---
+PATTERNS_CONTENT=""
+if [ "$EXEMPT" = "false" ]; then
+  PATTERNS_FILE="$PROJECT_DIR/.patterns/patterns.md"
+  if [ -f "$PATTERNS_FILE" ]; then
+    PATTERNS_CONTENT=$(cat "$PATTERNS_FILE")
+  fi
+fi
+
+# --- Output ---
 echo "<orchestration-hook>"
 
-# Always inject the full protocol
-if [ -n "$PROTOCOL_CONTENT" ]; then
-  echo "--- ORCHESTRATION PROTOCOL (implement strictly) ---"
-  echo "$PROTOCOL_CONTENT"
-  echo "--- END PROTOCOL ---"
-  echo ""
+if [ "$IS_FIRST_PROMPT" = true ]; then
+  # First prompt: inject full protocol
+  if [ -n "$PROTOCOL_CONTENT" ]; then
+    echo "--- ORCHESTRATION PROTOCOL (implement strictly) ---"
+    echo "$PROTOCOL_CONTENT"
+    echo "--- END PROTOCOL ---"
+    echo ""
+  fi
+else
+  # Subsequent prompts: inject condensed reminder
+  cat <<'REMINDER'
+--- ORCHESTRATION REMINDER ---
+GATED SEQUENCE: 1) Compact → 2) Grep compaction → 3) Read source (only for gaps)
+HARD RULE: Do NOT Read source, Glob, or Explore until compaction is grepped and findings stated.
+NO CONTEXT REUSE: Each new task must grep compaction independently.
+BINDING: ⚙ [task] | [workflow + URL] | [simple/complex] | [tools]
+EXEMPT: ⚙ [task] | EXEMPT — only when: single file, 1-2 ops, zero architecture impact, no codebase search.
+COMPLETION: ✓ [task] | [workflow] | [files modified] | cleanup: [yes/no/n/a]
+PATTERNS: If .patterns/patterns.md exists, load and treat as binding constraints.
+--- END REMINDER ---
+
+REMINDER
 fi
 
 echo "$CLASSIFICATION_NOTE"
@@ -211,6 +258,13 @@ if [ -n "$WORKFLOW_CONTENT" ]; then
   echo "--- WORKFLOW: $MATCHED_KEY ---"
   echo "$WORKFLOW_CONTENT"
   echo "--- END WORKFLOW ---"
+fi
+
+if [ -n "$PATTERNS_CONTENT" ]; then
+  echo ""
+  echo "--- PATTERNS (binding constraints) ---"
+  echo "$PATTERNS_CONTENT"
+  echo "--- END PATTERNS ---"
 fi
 
 echo "</orchestration-hook>"
@@ -240,8 +294,9 @@ CDN_BASE="https://agentic-orchestration-workflows.vercel.app"
 
 mkdir -p "$SCRIPTS_DIR"
 
-# Clear session marker from previous sessions
+# Clear session markers from previous sessions
 rm -f "$ORCH_DIR/tools/.compaction_grepped"
+rm -f "$ORCH_DIR/tools/.protocol_injected"
 
 UPDATES=""
 
@@ -471,6 +526,9 @@ set -uo pipefail
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-.}"
 ORCH_FILE="$PROJECT_DIR/.orchestration/orchestration.md"
 
+# Clear protocol_injected marker so next prompt re-injects full protocol
+rm -f "$PROJECT_DIR/.orchestration/tools/.protocol_injected"
+
 if [ -f "$ORCH_FILE" ]; then
   PROTOCOL_CONTENT=$(cat "$ORCH_FILE")
   echo "<orchestration-rehydrate>"
@@ -575,7 +633,7 @@ echo '{"source":"compact","session_id":"test"}' | CLAUDE_PROJECT_DIR="." ~/.clau
 Validate CLAUDE.md:
 
 ```bash
-grep -qF '.orchestration/orchestration.md' CLAUDE.md && echo "CLAUDE.md: OK" || echo "CLAUDE.md: MISSING DIRECTIVE"
+grep -qF 'orchestration protocol' CLAUDE.md && echo "CLAUDE.md: OK" || echo "CLAUDE.md: MISSING DIRECTIVE"
 ```
 
 Validate settings JSON:

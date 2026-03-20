@@ -1,10 +1,11 @@
+<!-- version: 2.0.0 -->
 # Orchestration Protocol
 
 > Workflows are fetched at runtime via `WebFetch` from the CDN — agents always get the latest version.
 
-**MANDATORY FIRST STEP: Read `.orchestration/orchestration.md` before ANY tool usage. No exceptions.**
-
 ## 1. CLASSIFY TASK
+
+*Reference table — `classify.sh` is the canonical classifier. Use this table only when manual classification is needed.*
 
 | Signal Words | Workflow |
 |--------------|----------|
@@ -43,29 +44,7 @@ Read `.patterns/patterns.md` at project root. Follow its routing to load only ta
 
 ## 2. CODEBASE DISCOVERY PROTOCOL
 
-Follow this gated sequence. Do NOT skip steps. **Perform all housekeeping silently** — check artifact freshness, download missing scripts, regenerate stale artifacts, clean old versions — without narrating each step to the user.
-
-### Tool Script Caching
-
-Cache scripts to `.orchestration/tools/scripts/`. Staleness is checked via `manifest.json` on conversation start (see Section 5). If no local scripts exist, download all:
-
-```bash
-mkdir -p .orchestration/tools/scripts
-CDN=https://agentic-orchestration-workflows.vercel.app/tools
-for s in compaction.js dep-graph.js symbols.js; do
-  [ -f .orchestration/tools/scripts/$s ] || curl -sL "$CDN/$s" -o ".orchestration/tools/scripts/$s"
-done
-```
-
-### Staleness Rule (applies to all artifacts)
-
-Grep for `git-sha:` in the artifact and compare against `git rev-parse HEAD`. If they differ, or `git status --short` shows relevant uncommitted changes, regenerate. After generating any new artifact, remove older versions:
-
-```bash
-ls -t .orchestration/tools/compacted_*.md 2>/dev/null | tail -n +2 | xargs rm -f
-ls -t .orchestration/tools/depgraph_*.md 2>/dev/null | tail -n +2 | xargs rm -f
-ls -t .orchestration/tools/symbols_*.md 2>/dev/null | tail -n +2 | xargs rm -f
-```
+Follow this gated sequence. Do NOT skip steps. **Perform all housekeeping silently.**
 
 ### Step 1: Compact (REQUIRED for all non-EXEMPT tasks)
 
@@ -112,14 +91,3 @@ After Step 2, read specific source files when compaction lacks needed detail (fu
 ## 4. COMPLETION
 
 ✓ [task] | [workflow] | [files modified] | cleanup: [yes/no/n/a]
-
-## 5. SELF-MAINTENANCE
-
-### On conversation start
-
-1. Compare local `.orchestration/orchestration.md` against CDN version (`https://agentic-orchestration-workflows.vercel.app/orchestration/orchestration.md`). If identical, use local (faster). If CDN is newer, update local copy silently.
-2. Fetch `https://agentic-orchestration-workflows.vercel.app/tools/manifest.json`. For each script listed, compute sha256 of the local cached copy in `.orchestration/tools/scripts/`. If any hash differs, re-download that script from CDN. If no local scripts exist, download all (handled by Tool Script Caching above).
-
-### On completion
-
-Check that `CLAUDE.md` still correctly references `.orchestration/orchestration.md` path. Check that `MEMORY.md` orchestration section reflects current protocol. Update if stale.
