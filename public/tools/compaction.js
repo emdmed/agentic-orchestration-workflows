@@ -113,10 +113,10 @@ const formatPythonSkeleton = (skeleton) => {
     }).join(', ')}`);
   }
   if (skeleton.functions.length > 0) {
-    lines.push(`fn: ${skeleton.functions.map(f => {
+    for (const f of skeleton.functions) {
       const deco = f.decorators.length > 0 ? `@${f.decorators[0]} ` : '';
-      return `${deco}${f.name}(${f.params || ''}):${f.line}`;
-    }).join(', ')}`);
+      lines.push(`fn: ${deco}${f.name}(${f.params || ''}):${f.line}`);
+    }
   }
   if (skeleton.constants.length > 0) {
     const names = skeleton.constants;
@@ -397,11 +397,11 @@ const formatCSharpSkeleton = (skeleton) => {
     lines.push(`enums: ${skeleton.enums.map(e => `${e.name}:${e.line}`).join(', ')}`);
   }
   if (skeleton.functions.length > 0) {
-    lines.push(`fn: ${skeleton.functions.map(f => {
+    for (const f of skeleton.functions) {
       const asyncPrefix = f.async ? 'async ' : '';
       const staticPrefix = f.static ? 'static ' : '';
-      return `${staticPrefix}${asyncPrefix}${f.name}(${f.params || ''}):${f.line}`;
-    }).join(', ')}`);
+      lines.push(`fn: ${staticPrefix}${asyncPrefix}${f.name}(${f.params || ''}):${f.line}`);
+    }
   }
   if (skeleton.constants.length > 0) {
     const names = skeleton.constants;
@@ -734,11 +734,11 @@ const formatBabelSkeleton = (skeleton) => {
   }
   if (skeleton.contexts?.length > 0) lines.push(`contexts: ${skeleton.contexts.map(c => `${c.name}:${c.line}`).join(', ')}`);
   if (skeleton.functions.length > 0) {
-    lines.push(`fn: ${skeleton.functions.map(f => {
+    for (const f of skeleton.functions) {
       const marker = f.exportMarker || '';
       const asyncPrefix = f.async ? 'async ' : '';
-      return `${asyncPrefix}${f.name}(${f.params || ''})${marker}:${f.line}`;
-    }).join(', ')}`);
+      lines.push(`fn: ${asyncPrefix}${f.name}(${f.params || ''})${marker}:${f.line}`);
+    }
   }
   if (skeleton.constants.length > 0) {
     const names = skeleton.constants;
@@ -772,6 +772,35 @@ const formatTokenCount = (count) => {
 
 const formatOutput = (results) => {
   const lines = [];
+
+  // Entry points: files ranked by exported symbol count (top 5)
+  const ranked = results
+    .map(r => {
+      if (!r.skeleton) return { path: r.relativePath, exports: 0 };
+      const s = r.skeleton;
+      let exports = 0;
+      // JS/TS: count export markers
+      for (const list of [s.components, s.functions, s.classes].filter(Boolean)) {
+        for (const item of list) { if (item.exportMarker) exports++; }
+      }
+      // Python: top-level functions + classes count as exports
+      if (!exports && s.functions) exports += s.functions.length;
+      if (!exports && s.classes) exports += (s.classes || []).length;
+      // C#: classes + interfaces + enums
+      if (!exports && (s.interfaces || s.enums)) {
+        exports += (s.classes || []).length + (s.interfaces || []).length + (s.enums || []).length;
+      }
+      return { path: r.relativePath, exports };
+    })
+    .filter(r => r.exports > 0)
+    .sort((a, b) => b.exports - a.exports)
+    .slice(0, 5);
+
+  if (ranked.length > 0) {
+    lines.push(`## Entry Points`);
+    lines.push(ranked.map(r => `${r.path} (${r.exports})`).join(', '));
+  }
+
   results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
   for (const result of results) {
     lines.push(`## ${result.relativePath}`);

@@ -77,10 +77,45 @@ fi
 # --- Per-prompt: clear markers so each prompt starts fresh ---
 rm -f "$PROJECT_DIR/.orchestration/tools/.exempt"
 rm -f "$PROJECT_DIR/.orchestration/tools/.compaction_grepped"
+rm -f "$PROJECT_DIR/.orchestration/tools/.grep_patterns"
+rm -f "$PROJECT_DIR/.orchestration/tools/.prompt_keywords"
 
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt // .user_input // ""' 2>/dev/null) || PROMPT=""
 PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
+
+# --- Extract prompt keywords for grep quality validation ---
+# Stop words: common English words unlikely to match code identifiers
+STOP_WORDS="the a an is are was were be been being to for in on it its this that with from by at of and or not but so if do does did has have had can could will would shall should may might must into than then also just only very too quite"
+# Signal words: action verbs used for classification (won't match code identifiers)
+SIGNAL_WORDS="fix broken error crash bug build create add implement new clean improve restructure rename refactor slow optimize performance speed review check merge pr pull request test spec coverage e2e unit document readme explain complex multi-step plan patterns conventions generate typo bump update change wording label what how does describe tell show look read view open print list"
+
+if [ -n "$PROMPT_LOWER" ]; then
+  KEYWORDS=""
+  for word in $PROMPT_LOWER; do
+    # Strip non-alphanumeric chars from edges
+    clean=$(echo "$word" | sed 's/^[^a-z0-9]*//;s/[^a-z0-9]*$//')
+    # Skip if less than 3 chars
+    [ ${#clean} -lt 3 ] && continue
+    # Skip stop words
+    is_stop=false
+    for sw in $STOP_WORDS; do
+      [ "$clean" = "$sw" ] && { is_stop=true; break; }
+    done
+    [ "$is_stop" = true ] && continue
+    # Skip signal words
+    is_signal=false
+    for sig in $SIGNAL_WORDS; do
+      [ "$clean" = "$sig" ] && { is_signal=true; break; }
+    done
+    [ "$is_signal" = true ] && continue
+    KEYWORDS="${KEYWORDS}${clean}\n"
+  done
+  if [ -n "$KEYWORDS" ]; then
+    mkdir -p "$PROJECT_DIR/.orchestration/tools"
+    printf "%b" "$KEYWORDS" | sort -u > "$PROJECT_DIR/.orchestration/tools/.prompt_keywords"
+  fi
+fi
 
 CDN_BASE="https://agentic-orchestration-workflows.vercel.app"
 CDN="$CDN_BASE/orchestration/workflows"
@@ -297,6 +332,8 @@ mkdir -p "$SCRIPTS_DIR"
 # Clear session markers from previous sessions
 rm -f "$ORCH_DIR/tools/.compaction_grepped"
 rm -f "$ORCH_DIR/tools/.protocol_injected"
+rm -f "$ORCH_DIR/tools/.grep_patterns"
+rm -f "$ORCH_DIR/tools/.prompt_keywords"
 
 UPDATES=""
 
@@ -433,16 +470,47 @@ is_safe_path() {
   return 1
 }
 
-# ─── Mark compaction as grepped when Grep targets compaction files ───
+# ─── Helper: check if a grep pattern is trivially broad ───
+is_trivial_pattern() {
+  local pat="$1"
+  # Empty, single char, or catch-all patterns
+  [ -z "$pat" ] && return 0
+  [ ${#pat} -le 1 ] && return 0
+  echo "$pat" | grep -qE '^\.\*?$|^\^$|^\$$' && return 0
+  return 1
+}
+
+# ─── Helper: check unlock criteria for compaction grep quality ───
+PATTERNS_FILE="$PROJECT_DIR/.orchestration/tools/.grep_patterns"
+KEYWORDS_FILE="$PROJECT_DIR/.orchestration/tools/.prompt_keywords"
+
+check_unlock_criteria() {
+  [ ! -f "$PATTERNS_FILE" ] && return 1
+  local distinct_count
+  distinct_count=$(sort -u "$PATTERNS_FILE" | wc -l)
+  # Criterion 1: at least 2 distinct non-trivial patterns
+  [ "$distinct_count" -ge 2 ] && return 0
+  # Criterion 2: at least 1 pattern overlaps with a prompt keyword
+  if [ -f "$KEYWORDS_FILE" ]; then
+    while IFS= read -r pattern_line; do
+      local pat_lower
+      pat_lower=$(echo "$pattern_line" | tr '[:upper:]' '[:lower:]')
+      while IFS= read -r keyword; do
+        [ -z "$keyword" ] && continue
+        if echo "$pat_lower" | grep -qi "$keyword"; then
+          return 0
+        fi
+      done < "$KEYWORDS_FILE"
+    done < "$PATTERNS_FILE"
+  fi
+  return 1
+}
+
+# ─── Grep validation: multi-criteria quality gate for compaction greps ───
 if [ "$TOOL_NAME" = "Grep" ]; then
   TARGET_PATH=$(echo "$INPUT" | jq -r '.tool_input.path // ""' 2>/dev/null) || TARGET_PATH=""
-  # Create marker if grepping compacted files — but ONLY if a compaction artifact actually exists
   if echo "$TARGET_PATH" | grep -qE "compacted_|\.orchestration/tools"; then
-    if ls "$PROJECT_DIR/.orchestration/tools/compacted_"*.md >/dev/null 2>&1; then
-      touch "$MARKER"
-      exit 0
-    else
-      # Compaction artifact doesn't exist — deny and tell agent to generate it
+    if ! ls "$PROJECT_DIR/.orchestration/tools/compacted_"*.md >/dev/null 2>&1; then
       cat <<JSON
 {
   "hookSpecificOutput": {
@@ -454,9 +522,38 @@ if [ "$TOOL_NAME" = "Grep" ]; then
 JSON
       exit 0
     fi
+    # Extract the grep pattern
+    GREP_PATTERN=$(echo "$INPUT" | jq -r '.tool_input.pattern // ""' 2>/dev/null) || GREP_PATTERN=""
+    # Reject trivial patterns
+    if is_trivial_pattern "$GREP_PATTERN"; then
+      cat <<JSON
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "BLOCKED: Trivial grep pattern '$GREP_PATTERN' rejected. Use a meaningful search term related to your task (e.g., a function name, class name, or concept from the user's request)."
+  }
+}
+JSON
+      exit 0
+    fi
+    # Record pattern
+    mkdir -p "$PROJECT_DIR/.orchestration/tools"
+    echo "$GREP_PATTERN" >> "$PATTERNS_FILE"
+    # Check if unlock criteria are met
+    if check_unlock_criteria; then
+      touch "$MARKER"
+    fi
+    # Always allow the grep itself (just may not unlock source access yet)
+    exit 0
   fi
   # Block Grep on source files if compaction not yet grepped
   if [ ! -f "$MARKER" ] && [ -n "$TARGET_PATH" ] && ! is_safe_path "$TARGET_PATH"; then
+    # Enhanced deny message when patterns exist but criteria not met
+    if [ -f "$PATTERNS_FILE" ]; then
+      TRIED=$(tr '\n' ', ' < "$PATTERNS_FILE" | sed 's/,$//')
+      DENY_REASON="BLOCKED: You've grepped compaction but haven't found task-relevant results yet. Try grepping for terms from the user's request, or check the Entry Points section. Patterns tried so far: $TRIED. Need: 2+ distinct patterns or 1 matching a prompt keyword."
+    fi
     deny
   fi
   exit 0
@@ -509,6 +606,11 @@ if [ "$IS_SOURCE" = false ]; then
 fi
 
 # ─── Block source access before compaction grep ───
+# Enhanced deny message when patterns exist but criteria not met
+if [ -f "$PATTERNS_FILE" ]; then
+  TRIED=$(tr '\n' ', ' < "$PATTERNS_FILE" | sed 's/,$//')
+  DENY_REASON="BLOCKED: You've grepped compaction but haven't found task-relevant results yet. Try grepping for terms from the user's request, or check the Entry Points section. Patterns tried so far: $TRIED. Need: 2+ distinct patterns or 1 matching a prompt keyword."
+fi
 deny
 ```
 

@@ -7,18 +7,18 @@
 
 *Reference table — `classify.sh` is the canonical classifier. Use this table only when manual classification is needed.*
 
-| Signal Words | React Workflow | .NET Workflow |
-|--------------|----------------|---------------|
-| build, create, add, implement, new | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/feature.md) | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/feature.md) |
-| fix, broken, error, crash, bug | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/bugfix.md) | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/bugfix.md) |
-| clean up, improve, restructure, rename | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/refactor.md) | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/refactor.md) |
-| slow, optimize, performance, speed | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/performance.md) | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/performance.md) |
-| review, check, PR, merge | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/review.md) | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/review.md) |
-| PR description, pull request title | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/pr.md) | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/pr.md) |
-| test, spec, coverage, e2e, unit | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/test.md) | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/test.md) |
-| document, README, explain | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/docs.md) | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/docs.md) |
-| complex, multi-step, plan | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) |
-| patterns, conventions, generate patterns | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) |
+| Signal Words | Workflow |
+|--------------|----------|
+| build, create, add, implement, new | `feature.md` |
+| fix, broken, error, crash, bug | `bugfix.md` |
+| clean up, improve, restructure, rename | `refactor.md` |
+| slow, optimize, performance, speed | `performance.md` |
+| review, check, PR, merge | `review.md` |
+| PR description, pull request title | `pr.md` |
+| test, spec, coverage, e2e, unit | `test.md` |
+| document, README, explain | `docs.md` |
+| complex, multi-step, plan | `todo.md` |
+| patterns, conventions, generate patterns | `patterns-gen.md` |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
 **Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | .NET (`.cs`) → `workflows/dotnet/` | Other → `workflows/`
@@ -56,7 +56,7 @@ node .orchestration/tools/scripts/compaction.js <project-root>
 
 ### Step 1b: Dependency Graph
 
-**REQUIRED when:** workflow = refactor, task moves/renames/deletes files, modifies imports/exports, or you need "what breaks if I change X?"
+**REQUIRED when:** workflow = feature, bugfix, or refactor; task moves/renames/deletes files; modifies imports/exports; or you need "what breaks if I change X?"
 
 ```bash
 node .orchestration/tools/scripts/dep-graph.js <project-root>
@@ -91,3 +91,10 @@ After Step 2, read specific source files when compaction lacks needed detail (fu
 ## 4. COMPLETION
 
 ✓ [task] | [workflow] | [files modified] | cleanup: [yes/no/n/a]
+
+## 5. ERROR RECOVERY
+
+- **Compaction fails** (no Node, script error): Fall back to `Glob` + `Grep` on source — state "compaction unavailable."
+- **CDN unreachable** (workflow not fetched): Use the classification table above to identify the workflow type, then apply its general pattern (discover → implement → validate → constrain scope).
+- **Misclassification** (wrong workflow loaded): Re-classify manually using the table. `AskUserQuestion` if ambiguous.
+- **Grep returns nothing**: Check the Entry Points section in compaction output for starting files, then broaden search terms or fall back to Step 3.
