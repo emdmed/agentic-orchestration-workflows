@@ -10,6 +10,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import {
+  stripCommentsAndStrings, extractBalancedGenerics,
+  consumeModifiers, detectLanguage,
+} from './parse-utils.js';
 
 function getGitSha(dir) {
   try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
@@ -58,7 +62,9 @@ function collectFiles(dir, rootDir = dir, files = []) {
 // ── JS/TS extraction ──
 
 function extractJS(code, filePath) {
-  const lines = code.split("\n");
+  const lang = detectLanguage(filePath || '.js');
+  const cleaned = stripCommentsAndStrings(code, lang);
+  const lines = cleaned.split("\n");
   const symbols = [];
   const isPascalCase = (n) => /^[A-Z][a-zA-Z0-9]*$/.test(n);
   const isHook = (n) => /^use[A-Z]/.test(n);
@@ -69,7 +75,7 @@ function extractJS(code, filePath) {
     const indent = line.length - trimmed.length;
     const lineNum = i + 1;
 
-    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) continue;
+    if (!trimmed) continue;
 
     const isExported = trimmed.startsWith("export ");
     const isDefault = trimmed.includes("export default ");
@@ -133,7 +139,8 @@ function extractJS(code, filePath) {
 // ── Python extraction ──
 
 function extractPython(code) {
-  const lines = code.split("\n");
+  const cleaned = stripCommentsAndStrings(code, 'py');
+  const lines = cleaned.split("\n");
   const symbols = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -142,7 +149,7 @@ function extractPython(code) {
     const indent = line.length - trimmed.length;
     const lineNum = i + 1;
 
-    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (!trimmed) continue;
 
     // Class
     const classMatch = trimmed.match(/^class\s+(\w+)/);
@@ -172,7 +179,8 @@ function extractPython(code) {
 // ── C# extraction ──
 
 function extractCSharp(code) {
-  const lines = code.split("\n");
+  const cleaned = stripCommentsAndStrings(code, 'cs');
+  const lines = cleaned.split("\n");
   const symbols = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -180,43 +188,100 @@ function extractCSharp(code) {
     const trimmed = line.trimStart();
     const lineNum = i + 1;
 
-    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) continue;
+    if (!trimmed) continue;
+
+    // Attributes — skip over them
+    if (trimmed.startsWith('[') && !trimmed.startsWith('[assembly:')) {
+      if (!trimmed.includes(']')) {
+        // Multi-line attribute: skip lines until balanced
+        let depth = 0;
+        for (; i < lines.length; i++) {
+          for (const ch of lines[i]) {
+            if (ch === '[') depth++;
+            else if (ch === ']') depth--;
+          }
+          if (depth <= 0) break;
+        }
+      }
+      continue;
+    }
+
+    const tokens = trimmed.split(/\s+/);
+    const { modifiers, rest } = consumeModifiers(tokens);
 
     // Enum
-    const enumMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*enum\s+(\w+)/);
-    if (enumMatch) {
-      symbols.push({ name: enumMatch[1], kind: KIND.TYPE, line: lineNum, exp: "" });
+    if (rest.length >= 2 && rest[0] === 'enum') {
+      symbols.push({ name: rest[1], kind: KIND.TYPE, line: lineNum, exp: "" });
       continue;
     }
 
     // Interface
-    const ifaceMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:partial\s+)?interface\s+(\w+)/);
-    if (ifaceMatch) {
-      symbols.push({ name: ifaceMatch[1], kind: KIND.TYPE, line: lineNum, exp: "" });
+    if (rest.length >= 2 && rest[0] === 'interface') {
+      let name = rest[1];
+      const genIdx = name.indexOf('<');
+      if (genIdx > 0) name = name.slice(0, genIdx);
+      symbols.push({ name, kind: KIND.TYPE, line: lineNum, exp: "" });
       continue;
     }
 
     // Class / struct / record
-    const classMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:partial\s+)?(?:class|struct|record)\s+(\w+)/);
-    if (classMatch) {
-      symbols.push({ name: classMatch[1], kind: KIND.CLASS, line: lineNum, exp: "" });
+    if (rest.length >= 2 && (rest[0] === 'class' || rest[0] === 'struct' || rest[0] === 'record')) {
+      let name = rest[1];
+      const genIdx = name.indexOf('<');
+      if (genIdx > 0) name = name.slice(0, genIdx);
+      symbols.push({ name, kind: KIND.CLASS, line: lineNum, exp: "" });
       continue;
     }
 
-    // Methods (top-level-ish: public/private/protected/internal + return type + name + parens)
-    const methodMatch = trimmed.match(/^(?:public|private|protected|internal)\s+(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(/);
-    if (methodMatch && !trimmed.includes(" class ") && !trimmed.includes(" interface ") && !trimmed.includes(" struct ") && !trimmed.includes(" enum ")) {
-      const name = methodMatch[1];
-      if (name !== "get" && name !== "set" && name !== "if" && name !== "for" && name !== "while" && name !== "switch" && name !== "catch" && name !== "using" && name !== "return" && name !== "new") {
-        symbols.push({ name, kind: KIND.FUNCTION, line: lineNum, exp: "" });
-        continue;
+    // Methods — modifier-loop + generic-aware return type
+    if (rest.length >= 2 && trimmed.includes('(') &&
+        !trimmed.includes(' class ') && !trimmed.includes(' interface ') &&
+        !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
+      const restStr = rest.join(' ');
+      let pos = 0;
+      // Skip return type: either tuple (...) or identifier + optional <...>
+      if (restStr.startsWith('(')) {
+        let depth = 0;
+        for (; pos < restStr.length; pos++) {
+          if (restStr[pos] === '(') depth++;
+          else if (restStr[pos] === ')') { depth--; if (depth === 0) { pos++; break; } }
+        }
+      } else {
+        const retTypeMatch = restStr.match(/^[\w.]+/);
+        if (retTypeMatch) {
+          pos = retTypeMatch[0].length;
+          const afterRetType = restStr.slice(pos);
+          if (afterRetType.startsWith('<')) {
+            const gen = extractBalancedGenerics(afterRetType, 0);
+            if (gen) pos += gen.endIndex + 1;
+          }
+        }
+      }
+      while (pos < restStr.length && (restStr[pos] === '[' || restStr[pos] === ']' || restStr[pos] === '?' || restStr[pos] === ' ')) pos++;
+      // Extract method name — may be followed by <...> for generic methods
+      const nameMatch = restStr.slice(pos).match(/^(\w+)\s*(?:<|$|\()/);
+      if (nameMatch) {
+        const name = nameMatch[1];
+        let afterNamePos = pos + name.length;
+        while (afterNamePos < restStr.length && restStr[afterNamePos] === ' ') afterNamePos++;
+        if (afterNamePos < restStr.length && restStr[afterNamePos] === '<') {
+          const gen = extractBalancedGenerics(restStr, afterNamePos);
+          if (gen) afterNamePos = gen.endIndex + 1;
+        }
+        while (afterNamePos < restStr.length && restStr[afterNamePos] === ' ') afterNamePos++;
+        const hasOpenParen = (afterNamePos < restStr.length && restStr[afterNamePos] === '(') || trimmed.includes(name + '(') || trimmed.includes(name + '<');
+        const skipNames = new Set(['get', 'set', 'if', 'for', 'while', 'switch', 'catch', 'using', 'return', 'new', 'class', 'struct', 'record', 'interface', 'enum', 'namespace', 'delegate']);
+        if (hasOpenParen && !skipNames.has(name)) {
+          symbols.push({ name, kind: KIND.FUNCTION, line: lineNum, exp: "" });
+          continue;
+        }
       }
     }
 
     // Constants
-    const constMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:readonly\s+)?const\s+\w+\s+(\w+)/);
-    if (constMatch) {
-      symbols.push({ name: constMatch[1], kind: KIND.CONSTANT, line: lineNum, exp: "" });
+    if (rest.length >= 3 && rest[0] === 'const') {
+      // const Type Name = ...
+      symbols.push({ name: rest[2], kind: KIND.CONSTANT, line: lineNum, exp: "" });
       continue;
     }
   }

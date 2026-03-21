@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, join, basename, dirname, relative, extname } from 'path';
+import { stripCommentsAndStrings, detectLanguage } from './parse-utils.js';
 
 function getGitSha(dir) {
   try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
@@ -48,53 +49,74 @@ function collectFiles(dir, rootDir = dir, files = []) {
 
 // ── Import extraction ──
 
-function extractJsImports(code) {
+function extractJsImports(code, filePath) {
+  // Pre-pass: build a blanking map to detect if a match falls in a string/comment.
+  // We run regex on original code (to capture paths) but verify each match offset
+  // is real code (not blanked) by checking the cleaned version at the keyword position.
+  const lang = detectLanguage(filePath || '.js');
+  const cleaned = stripCommentsAndStrings(code, lang);
+
+  function isRealAt(offset) {
+    // Check that the character at `offset` in cleaned code is not blanked (not a space
+    // where the original had a non-space). If original is non-space and cleaned is space,
+    // it was inside a string/comment.
+    if (offset >= cleaned.length) return false;
+    const origCh = code[offset];
+    const cleanCh = cleaned[offset];
+    // If original char was non-space but cleaned is space, it's blanked
+    if (origCh !== ' ' && origCh !== '\t' && cleanCh === ' ') return false;
+    return true;
+  }
+
   const local = [];
   const external = [];
+
+  function classify(source) {
+    if (source.startsWith('.') || source.startsWith('/')) local.push(source);
+    else external.push(source.split('/').slice(0, source.startsWith('@') ? 2 : 1).join('/'));
+  }
 
   // Static imports: import ... from '...'
   const importRegex = /import\s+(?:[\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g;
   let match;
   while ((match = importRegex.exec(code)) !== null) {
-    const source = match[1];
-    if (source.startsWith('.') || source.startsWith('/')) local.push(source);
-    else external.push(source.split('/').slice(0, source.startsWith('@') ? 2 : 1).join('/'));
+    if (!isRealAt(match.index)) continue;
+    classify(match[1]);
   }
 
   // Side-effect imports: import '...'
   const sideEffectRegex = /import\s+['"]([^'"]+)['"]/g;
   while ((match = sideEffectRegex.exec(code)) !== null) {
-    const source = match[1];
-    if (source.startsWith('.') || source.startsWith('/')) local.push(source);
-    else external.push(source.split('/').slice(0, source.startsWith('@') ? 2 : 1).join('/'));
+    if (!isRealAt(match.index)) continue;
+    classify(match[1]);
   }
 
   // Dynamic imports: import('...')
   const dynamicRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   while ((match = dynamicRegex.exec(code)) !== null) {
-    const source = match[1];
-    if (source.startsWith('.') || source.startsWith('/')) local.push(source);
-    else external.push(source.split('/').slice(0, source.startsWith('@') ? 2 : 1).join('/'));
+    if (!isRealAt(match.index)) continue;
+    classify(match[1]);
   }
 
   // require('...')
   const requireRegex = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   while ((match = requireRegex.exec(code)) !== null) {
-    const source = match[1];
-    if (source.startsWith('.') || source.startsWith('/')) local.push(source);
-    else external.push(source.split('/').slice(0, source.startsWith('@') ? 2 : 1).join('/'));
+    if (!isRealAt(match.index)) continue;
+    classify(match[1]);
   }
 
   return { local, external };
 }
 
 function extractPyImports(code) {
+  const cleaned = stripCommentsAndStrings(code, 'py');
   const local = [];
   const external = [];
 
-  const lines = code.split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
+  const lines = cleaned.split('\n');
+  for (let li = 0; li < lines.length; li++) {
+    const trimmed = lines[li].trim();
+    if (!trimmed) continue;
 
     // from .foo import bar  (relative)
     const fromRelative = trimmed.match(/^from\s+(\.+\w*)\s+import/);
@@ -122,8 +144,8 @@ function extractCsImports(code) {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // using Namespace.Sub;
-    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?([\w.]+)\s*;/);
+    // using Namespace.Sub;  or  using Alias = Namespace.Sub;
+    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?(?:\w+\s*=\s*)?([\w.]+)\s*;/);
     if (usingMatch) {
       external.push(usingMatch[1].split('.')[0]);
       continue;
@@ -183,7 +205,7 @@ function buildGraph(files, rootDir) {
 
     const isPython = PY_EXTENSIONS.some(ext => file.endsWith(ext));
     const isCSharp = CS_EXTENSIONS.some(ext => file.endsWith(ext));
-    const { local, external } = isCSharp ? extractCsImports(code) : isPython ? extractPyImports(code) : extractJsImports(code);
+    const { local, external } = isCSharp ? extractCsImports(code) : isPython ? extractPyImports(code) : extractJsImports(code, file);
 
     for (const imp of local) {
       const resolved = resolveLocalImport(imp, file, rootDir, allFilesSet);

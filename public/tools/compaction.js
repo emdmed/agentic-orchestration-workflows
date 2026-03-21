@@ -11,6 +11,11 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve, join, basename, dirname } from 'path';
+import {
+  stripCommentsAndStrings, readUntilBalanced as _readUntilBalanced,
+  extractBalancedGenerics, simplifyTypeAnnotation,
+  consumeModifiers, detectLanguage,
+} from './parse-utils.js';
 
 function getGitSha(dir) {
   try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
@@ -24,7 +29,8 @@ const PYTHON_EXTENSIONS = ['.py'];
 const isPythonParseable = (path) => PYTHON_EXTENSIONS.some(ext => path.endsWith(ext));
 
 const extractPythonSkeleton = (code, filePath = '') => {
-  const lines = code.split('\n');
+  const cleaned = stripCommentsAndStrings(code, 'py');
+  const lines = cleaned.split('\n');
   const skeleton = { imports: [], functions: [], classes: [], constants: [] };
   let pendingDecorators = [];
 
@@ -32,7 +38,7 @@ const extractPythonSkeleton = (code, filePath = '') => {
     const line = lines[i];
     const lineNum = i + 1;
 
-    if (/^\s*$/.test(line) || /^\s*#/.test(line)) continue;
+    if (/^\s*$/.test(line)) continue;
     if (/^\s/.test(line) && !/^@/.test(line)) { pendingDecorators = []; continue; }
 
     const decoratorMatch = line.match(/^@(\w[\w.]*)/);
@@ -126,7 +132,8 @@ const CS_EXTENSIONS = ['.cs'];
 const isCSharpParseable = (path) => CS_EXTENSIONS.some(ext => path.endsWith(ext));
 
 const extractCSharpSkeleton = (code, filePath = '') => {
-  const lines = code.split('\n');
+  const cleaned = stripCommentsAndStrings(code, 'cs');
+  const lines = cleaned.split('\n');
   const skeleton = { usings: [], namespaces: [], classes: [], interfaces: [], enums: [], functions: [], constants: [] };
   let pendingAttributes = [];
 
@@ -135,14 +142,32 @@ const extractCSharpSkeleton = (code, filePath = '') => {
     const lineNum = i + 1;
     const trimmed = line.trim();
 
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue;
+    if (!trimmed) continue;
 
-    // Attributes
-    const attrMatch = trimmed.match(/^\[([^\]]+)\]$/);
-    if (attrMatch) { pendingAttributes.push(attrMatch[1].split('(')[0].trim()); continue; }
+    // Attributes — single-line [Attr] or multi-line [Attr(\n...\n)]
+    if (trimmed.startsWith('[') && !trimmed.startsWith('[assembly:')) {
+      let attrText = trimmed;
+      if (!attrText.includes(']')) {
+        // Multi-line attribute: accumulate until balanced
+        const balanced = readUntilBalanced(lines, i, '[', ']');
+        attrText = balanced.text;
+        i = balanced.endIndex;
+      }
+      // Extract all attributes from potential [Attr1][Attr2] or [Attr1, Attr2]
+      const attrRegex = /\[([^\]]+)\]/g;
+      let attrM;
+      while ((attrM = attrRegex.exec(attrText)) !== null) {
+        const attrs = attrM[1].split(',');
+        for (const a of attrs) {
+          const name = a.trim().split('(')[0].trim();
+          if (name) pendingAttributes.push(name);
+        }
+      }
+      continue;
+    }
 
-    // Using directives
-    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?([\w.]+)\s*;/);
+    // Using directives (including aliases: using Foo = Bar.Baz;)
+    const usingMatch = trimmed.match(/^using\s+(?:static\s+)?(?:\w+\s*=\s*)?([\w.]+)\s*;/);
     if (usingMatch) { skeleton.usings.push(usingMatch[1]); pendingAttributes = []; continue; }
 
     // Namespace
@@ -156,40 +181,179 @@ const extractCSharpSkeleton = (code, filePath = '') => {
       pendingAttributes = []; continue;
     }
 
-    // Interface
-    const ifaceMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:partial\s+)?interface\s+(\w+)(?:<[^>]+>)?(?:\s*:\s*(.+?))?(?:\s*\{|$)/);
-    if (ifaceMatch) {
-      const bases = ifaceMatch[2] ? ifaceMatch[2].split(',').map(s => s.trim()).filter(Boolean) : [];
-      skeleton.interfaces.push({ name: ifaceMatch[1], line: lineNum, attributes: [...pendingAttributes], bases });
-      pendingAttributes = []; continue;
-    }
-
-    // Class / struct / record
-    const classMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:partial\s+)?(?:class|struct|record)\s+(\w+)(?:<[^>]+>)?(?:\s*\(([^)]*)\))?(?:\s*:\s*(.+?))?(?:\s*\{|$)/);
-    if (classMatch) {
-      const bases = classMatch[3] ? classMatch[3].split(',').map(s => s.trim()).filter(Boolean) : [];
-      const params = classMatch[2] ? classMatch[2].replace(/\s+/g, ' ').trim() : undefined;
-      const isStatic = /\bstatic\b/.test(trimmed);
-      const isAbstract = /\babstract\b/.test(trimmed);
-      skeleton.classes.push({ name: classMatch[1], line: lineNum, attributes: [...pendingAttributes], bases, params, static: isStatic, abstract: isAbstract });
-      pendingAttributes = []; continue;
-    }
-
-    // Top-level or static methods (simplified: access modifier + return type + name + params)
-    // Match method start even if params span multiple lines
-    const methodStartMatch = trimmed.match(/^(?:public|private|protected|internal)?\s*(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:abstract\s+)?(?:[\w<>\[\]?,\s]+?)\s+(\w+)\s*\(/);
-    if (methodStartMatch && !trimmed.includes(' class ') && !trimmed.includes(' interface ') && !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
-      const name = methodStartMatch[1];
-      // Skip property getters/setters and control flow keywords
-      if (name !== 'get' && name !== 'set' && name !== 'if' && name !== 'for' && name !== 'while' && name !== 'switch' && name !== 'catch' && name !== 'using' && name !== 'return' && name !== 'new') {
-        const { text: fullSig, endIndex } = readUntilBalanced(lines, i, '(', ')');
-        i = endIndex;
-        const paramsMatch = fullSig.match(/\(([^)]*)\)/);
-        let params = paramsMatch ? paramsMatch[1].replace(/\s+/g, ' ').trim() : '';
-        const isAsync = /\basync\b/.test(fullSig);
-        const isStatic = /\bstatic\b/.test(fullSig);
-        skeleton.functions.push({ name, line: lineNum, attributes: [...pendingAttributes], params, async: isAsync, static: isStatic });
+    // Interface — modifier-loop + nested-generic-aware
+    {
+      const tokens = trimmed.split(/\s+/);
+      const { modifiers: ifMods, rest: ifRest } = consumeModifiers(tokens);
+      if (ifRest.length >= 2 && ifRest[0] === 'interface') {
+        let ifName = ifRest[1];
+        // Strip generic suffix from name token e.g. "IFoo<T," → "IFoo"
+        const genIdx = ifName.indexOf('<');
+        if (genIdx > 0) ifName = ifName.slice(0, genIdx);
+        // Skip past generics in the full line
+        let afterName = trimmed.slice(trimmed.indexOf(ifName) + ifName.length).trim();
+        if (afterName.startsWith('<')) {
+          const gen = extractBalancedGenerics(afterName, 0);
+          if (gen) afterName = afterName.slice(gen.endIndex + 1).trim();
+        }
+        const basesMatch = afterName.match(/^:\s*(.+?)(?:\s*\{|$)/);
+        const bases = basesMatch ? basesMatch[1].split(',').map(s => s.trim()).filter(Boolean) : [];
+        skeleton.interfaces.push({ name: ifName, line: lineNum, attributes: [...pendingAttributes], bases });
         pendingAttributes = []; continue;
+      }
+    }
+
+    // Class / struct / record — modifier-loop + generic-aware
+    {
+      const tokens = trimmed.split(/\s+/);
+      const { modifiers: clsMods, rest: clsRest } = consumeModifiers(tokens);
+      const clsKeyword = clsRest[0];
+      if (clsRest.length >= 2 && (clsKeyword === 'class' || clsKeyword === 'struct' || clsKeyword === 'record')) {
+        let clsName = clsRest[1];
+        const genIdx = clsName.indexOf('<');
+        if (genIdx > 0) clsName = clsName.slice(0, genIdx);
+        // Skip past generics
+        let afterName = trimmed.slice(trimmed.indexOf(clsKeyword) + clsKeyword.length).trim();
+        afterName = afterName.slice(afterName.indexOf(clsName) + clsName.length).trim();
+        if (afterName.startsWith('<')) {
+          const gen = extractBalancedGenerics(afterName, 0);
+          if (gen) afterName = afterName.slice(gen.endIndex + 1).trim();
+        }
+        // Record primary constructor params
+        let params;
+        if (afterName.startsWith('(')) {
+          const balanced = readUntilBalanced(lines, i, '(', ')');
+          const pMatch = balanced.text.match(/\(([^)]*)\)/);
+          params = pMatch ? pMatch[1].replace(/\s+/g, ' ').trim() : undefined;
+          i = balanced.endIndex;
+          afterName = balanced.text.slice(balanced.text.indexOf(')') + 1).trim();
+        }
+        const basesMatch = afterName.match(/^:\s*(.+?)(?:\s*\{|$|\s*;|$)/);
+        const bases = basesMatch ? basesMatch[1].split(',').map(s => s.trim()).filter(Boolean) : [];
+        skeleton.classes.push({
+          name: clsName, line: lineNum, attributes: [...pendingAttributes], bases, params,
+          static: clsMods.has('static'), abstract: clsMods.has('abstract'),
+        });
+        pendingAttributes = []; continue;
+      }
+    }
+
+    // Methods — modifier-loop + generic-aware return type matching
+    {
+      const tokens = trimmed.split(/\s+/);
+      const { modifiers: methMods, rest: methRest } = consumeModifiers(tokens);
+      // Need at least return-type + name + '(' — methRest should have >= 2 tokens
+      // and the line must contain '(' somewhere
+      if (methRest.length >= 2 && trimmed.includes('(') &&
+          !trimmed.includes(' class ') && !trimmed.includes(' interface ') &&
+          !trimmed.includes(' struct ') && !trimmed.includes(' enum ')) {
+        const restStr = methRest.join(' ');
+        let pos = 0;
+        // Skip return type: either tuple (...) or identifier + optional <...>
+        if (restStr.startsWith('(')) {
+          // Tuple return type: (bool Success, string Message, ...)
+          let depth = 0;
+          for (; pos < restStr.length; pos++) {
+            if (restStr[pos] === '(') depth++;
+            else if (restStr[pos] === ')') { depth--; if (depth === 0) { pos++; break; } }
+          }
+        } else {
+          const retTypeMatch = restStr.match(/^[\w.]+/);
+          if (retTypeMatch) {
+            pos = retTypeMatch[0].length;
+            // Check for generics on return type
+            const afterRetType = restStr.slice(pos);
+            if (afterRetType.startsWith('<')) {
+              const gen = extractBalancedGenerics(afterRetType, 0);
+              if (gen) pos += gen.endIndex + 1;
+            }
+          }
+        }
+        // Check for array brackets [] or nullable ?
+        while (pos < restStr.length && (restStr[pos] === '[' || restStr[pos] === ']' || restStr[pos] === '?' || restStr[pos] === ' ')) pos++;
+        // Extract method name — may be followed by <...> for generic methods
+        const nameMatch = restStr.slice(pos).match(/^(\w+)\s*(?:<|$|\()/);
+        if (nameMatch) {
+          const name = nameMatch[1];
+          // Skip generic type params on method name if present
+          let afterNamePos = pos + name.length;
+          while (afterNamePos < restStr.length && restStr[afterNamePos] === ' ') afterNamePos++;
+          if (afterNamePos < restStr.length && restStr[afterNamePos] === '<') {
+            const gen = extractBalancedGenerics(restStr, afterNamePos);
+            if (gen) afterNamePos = gen.endIndex + 1;
+          }
+          // Verify there's a '(' after the name (+ optional generics)
+          while (afterNamePos < restStr.length && restStr[afterNamePos] === ' ') afterNamePos++;
+          const hasOpenParen = afterNamePos < restStr.length && restStr[afterNamePos] === '(' || trimmed.includes(name + '(') || trimmed.includes(name + '<');
+          const skipNames = new Set(['get', 'set', 'if', 'for', 'while', 'switch', 'catch', 'using', 'return', 'new', 'class', 'struct', 'record', 'interface', 'enum', 'namespace', 'delegate']);
+          if (hasOpenParen && !skipNames.has(name)) {
+            // Find the method's parameter '(' — locate it after the method name
+            // (+ optional generics), skipping any tuple return type parens
+            let paramStartLine = i;
+            let params = '';
+            // Build a contiguous string from current line onward to find the method name
+            let searchBuf = lines[i].trim();
+            let searchEnd = i;
+            // Ensure we have enough text to find the method params (may span lines)
+            while (searchEnd < lines.length - 1 && !new RegExp(name + '\\s*(?:<[^>]*>\\s*)?\\(').test(searchBuf)) {
+              searchEnd++;
+              searchBuf += ' ' + lines[searchEnd].trim();
+            }
+            // Find the method name + optional generics + '(' in the buffer
+            const methNameRegex = new RegExp(name + '\\s*(?:<[\\s\\S]*?>\\s*)?\\(');
+            const methNameMatch = methNameRegex.exec(searchBuf);
+            if (methNameMatch) {
+              // Count how many '(' occur before the method's '(' in the buffer
+              const beforeMethParen = searchBuf.slice(0, methNameMatch.index + methNameMatch[0].length - 1);
+              let extraOpenParens = 0;
+              for (const ch of beforeMethParen) {
+                if (ch === '(') extraOpenParens++;
+                else if (ch === ')') extraOpenParens--;
+              }
+              // Now use readUntilBalanced, but we need to account for the extra parens
+              // Simpler: find the paren position in the original lines and read from there
+              // Build full signature from the method's paren onward
+              const fullSig = searchBuf.slice(methNameMatch.index + methNameMatch[0].length - 1);
+              // Use string-based balanced paren extraction
+              let depth = 0;
+              let paramContent = '';
+              let foundClose = false;
+              for (const ch of fullSig) {
+                if (ch === '(') depth++;
+                else if (ch === ')') {
+                  depth--;
+                  if (depth === 0) { foundClose = true; break; }
+                }
+                if (depth > 0 && !(depth === 1 && ch === '(')) paramContent += ch;
+              }
+              if (!foundClose) {
+                // Params span more lines — continue reading
+                let j = searchEnd + 1;
+                while (j < lines.length && !foundClose) {
+                  const extra = lines[j].trim();
+                  for (const ch of extra) {
+                    if (ch === '(') depth++;
+                    else if (ch === ')') {
+                      depth--;
+                      if (depth === 0) { foundClose = true; break; }
+                    }
+                    if (depth > 0 && !(depth === 1 && ch === '(')) paramContent += ch;
+                    else if (depth === 1 && ch === '(') paramContent += ch;
+                  }
+                  searchEnd = j;
+                  j++;
+                }
+              }
+              params = paramContent.replace(/\s+/g, ' ').trim();
+            }
+            i = searchEnd;
+            skeleton.functions.push({
+              name, line: lineNum, attributes: [...pendingAttributes], params,
+              async: methMods.has('async'), static: methMods.has('static'),
+            });
+            pendingAttributes = []; continue;
+          }
+        }
       }
     }
 
@@ -254,25 +418,16 @@ const isPascalCase = (name) => /^[A-Z][a-zA-Z0-9]*$/.test(name);
 
 /**
  * Read lines until brackets/parens are balanced, starting from line i.
- * Returns the joined string and the new index.
+ * Delegates to shared parse-utils implementation.
  */
 function readUntilBalanced(lines, i, openChar = '(', closeChar = ')') {
-  let depth = 0;
-  let result = '';
-  for (; i < lines.length; i++) {
-    const line = lines[i];
-    for (const ch of line) {
-      if (ch === openChar) depth++;
-      else if (ch === closeChar) depth--;
-    }
-    result += (result ? ' ' : '') + line.trim();
-    if (depth <= 0) break;
-  }
-  return { text: result, endIndex: i };
+  return _readUntilBalanced(lines, i, openChar, closeChar);
 }
 
 const extractJsSkeleton = (code, filePath = '') => {
-  const lines = code.split('\n');
+  const lang = detectLanguage(filePath || '.js');
+  const cleaned = stripCommentsAndStrings(code, lang);
+  const lines = cleaned.split('\n');
   const skeleton = {
     imports: [], components: [], functions: [],
     hooks: { useState: [], useEffect: [], useCallback: 0, useMemo: 0, useRef: 0, custom: [] },
@@ -288,7 +443,7 @@ const extractJsSkeleton = (code, filePath = '') => {
     const trimmed = line.trimStart();
     const indent = line.length - trimmed.length;
 
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue;
+    if (!trimmed) continue;
 
     // ── Track component scope (for hook detection) ──
     if (currentComponentName !== null && indent <= componentIndent && trimmed.length > 0) {
@@ -510,18 +665,10 @@ const extractJsSkeleton = (code, filePath = '') => {
         continue;
       }
 
-      // useEffect
+      // useEffect — use readUntilBalanced for reliable paren matching
       if (/useEffect\s*\(/.test(trimmed)) {
-        // Try to find deps array — look for closing pattern on this or subsequent lines
-        let depsChunk = trimmed;
-        let j = i;
-        // Read a few lines to find the deps array at the end of useEffect call
-        while (j < Math.min(i + 20, lines.length - 1)) {
-          j++;
-          depsChunk += ' ' + lines[j].trim();
-          // If we find the closing of useEffect, stop
-          if (/\)\s*;?\s*$/.test(lines[j].trim())) break;
-        }
+        const balanced = readUntilBalanced(lines, i, '(', ')');
+        const depsChunk = balanced.text;
         // Look for dependency array: , [...]) at end
         const depsMatch = depsChunk.match(/,\s*\[([^\]]*)\]\s*\)\s*;?\s*$/);
         if (depsMatch) {
@@ -529,7 +676,6 @@ const extractJsSkeleton = (code, filePath = '') => {
           const deps = depsStr ? depsStr.split(',').map(d => d.trim()).filter(Boolean) : [];
           skeleton.hooks.useEffect.push({ line: lineNum, deps });
         } else {
-          // No deps found — could be infinite or complex
           skeleton.hooks.useEffect.push({ line: lineNum, deps: '?' });
         }
         continue;
@@ -561,14 +707,10 @@ const extractJsSkeleton = (code, filePath = '') => {
   return skeleton;
 };
 
-/** Simplify a parameter string — strip type annotations for brevity */
+/** Simplify a parameter string — strip type annotations for brevity (generic-aware) */
 function simplifyParams(paramStr) {
   if (!paramStr) return '';
-  // Remove inline type annotations (: Type) but keep destructuring
-  return paramStr
-    .replace(/:\s*[^,)=}]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return simplifyTypeAnnotation(paramStr);
 }
 
 const formatBabelSkeleton = (skeleton) => {

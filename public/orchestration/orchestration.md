@@ -7,21 +7,21 @@
 
 *Reference table — `classify.sh` is the canonical classifier. Use this table only when manual classification is needed.*
 
-| Signal Words | Workflow |
-|--------------|----------|
-| build, create, add, implement, new | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/feature.md) |
-| fix, broken, error, crash, bug | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/bugfix.md) |
-| clean up, improve, restructure, rename | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/refactor.md) |
-| slow, optimize, performance, speed | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/performance.md) |
-| review, check, PR, merge | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/review.md) |
-| PR description, pull request title | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/pr.md) |
-| test, spec, coverage, e2e, unit | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/test.md) |
-| document, README, explain | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/docs.md) |
-| complex, multi-step, plan | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) |
-| patterns, conventions, generate patterns | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) |
+| Signal Words | React Workflow | .NET Workflow |
+|--------------|----------------|---------------|
+| build, create, add, implement, new | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/feature.md) | [`feature.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/feature.md) |
+| fix, broken, error, crash, bug | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/bugfix.md) | [`bugfix.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/bugfix.md) |
+| clean up, improve, restructure, rename | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/refactor.md) | [`refactor.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/refactor.md) |
+| slow, optimize, performance, speed | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/performance.md) | [`performance.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/performance.md) |
+| review, check, PR, merge | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/review.md) | [`review.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/review.md) |
+| PR description, pull request title | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/pr.md) | [`pr.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/pr.md) |
+| test, spec, coverage, e2e, unit | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/test.md) | [`test.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/test.md) |
+| document, README, explain | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/react/docs.md) | [`docs.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/dotnet/docs.md) |
+| complex, multi-step, plan | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) | [`todo.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/todo.md) |
+| patterns, conventions, generate patterns | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) | [`patterns-gen.md`](https://agentic-orchestration-workflows.vercel.app/orchestration/workflows/patterns-gen.md) |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
-**Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | .NET (`.cs`) → `workflows/` | Other → `workflows/`
+**Technology:** React (`.jsx`/`.tsx`, hooks) → `workflows/react/` | .NET (`.cs`) → `workflows/dotnet/` | Other → `workflows/`
 
 ### Selection
 - **Clear match:** Proceed to binding
