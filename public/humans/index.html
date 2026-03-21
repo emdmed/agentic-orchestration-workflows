@@ -285,7 +285,10 @@
           Fires on every prompt. Reads the user's message, matches signal words against a classification
           table (feature, bugfix, refactor, etc.), and injects the full orchestration protocol plus the
           matched workflow into the agent's context. Also auto-detects the project's technology
-          (React, .NET, or general) for correct workflow routing. If the project has no
+          (React, .NET, or general) for correct workflow routing. Extracts
+          <span class="highlight">prompt keywords</span> — content words from the user's message with
+          stop words and classification signal words stripped — and writes them to
+          <code>.prompt_keywords</code> for use by the grep quality gate. If the project has no
           <code>.orchestration/</code> directory, it silently does nothing.
         </p>
       </div>
@@ -303,10 +306,15 @@
       <div class="tool-card">
         <div class="tool-name">guard-explore.sh <span style="color:#52525b;font-weight:400">· PreToolUse</span></div>
         <p>
-          Enforces the compaction-first gate. Blocks the agent from reading source files, globbing
-          <code>src/</code>, or spawning Explore agents until it has grepped the compacted output first.
-          This prevents the agent from falling back to expensive file-by-file exploration and ensures
-          compaction is always used. Uses a session marker file so the gate only applies once per session.
+          Enforces the compaction-first gate with <span class="highlight">grep quality validation</span>.
+          Blocks the agent from reading source files, globbing <code>src/</code>, or spawning Explore
+          agents until it has grepped the compacted output with meaningful search terms. Rejects trivial
+          patterns (single characters, <code>.*</code>, empty strings) and tracks every grep pattern in
+          <code>.grep_patterns</code>. Source access unlocks only when the agent has used
+          <span class="highlight">2+ distinct non-trivial patterns</span>, or
+          <span class="highlight">1 pattern that matches a prompt keyword</span> extracted by
+          <code>classify.sh</code>. When blocked, the deny message shows which patterns have been tried
+          and what's still needed.
         </p>
       </div>
 
@@ -318,6 +326,41 @@
           event), but kept as a utility script that can be called manually or by future hook events.
         </p>
       </div>
+    </div>
+
+    <div class="how-it-works">
+      <h2>grep quality gate</h2>
+      <p>
+        The guard doesn't just check <em>whether</em> the agent grepped compaction — it checks
+        <em>what</em> it searched for. Without this, an agent could grep for a nonsense string, get
+        zero results, and proceed to read every source file directly, defeating the purpose of compaction.
+      </p>
+      <p>
+        When the agent greps compaction, the guard records the pattern and checks two unlock criteria:
+      </p>
+      <table class="comparison">
+        <tr>
+          <th>criterion</th>
+          <th>what it means</th>
+        </tr>
+        <tr>
+          <td>2+ distinct patterns</td>
+          <td class="good">agent is genuinely exploring the compacted output</td>
+        </tr>
+        <tr>
+          <td>1 pattern matches a prompt keyword</td>
+          <td class="good">agent is searching for something task-relevant</td>
+        </tr>
+      </table>
+      <p>
+        <span class="highlight">Prompt keywords</span> are extracted by <code>classify.sh</code> on every
+        prompt: the user's message is lowercased, stop words (the, a, for, etc.) and classification signal
+        words (fix, add, build, etc.) are stripped, and the remaining 3+ character words are saved. For
+        example, "fix the login bug in TokenRefreshInterceptor" produces keywords <code>login</code> and
+        <code>tokenrefreshinterceptor</code>. If the agent greps compaction for "login", the gate unlocks
+        immediately because it matches a prompt keyword. All markers are cleared on each new prompt, so
+        the gate resets per-task.
+      </p>
     </div>
 
     <div class="how-it-works">
