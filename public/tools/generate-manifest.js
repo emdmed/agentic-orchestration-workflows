@@ -4,7 +4,7 @@ const { createHash } = require("crypto");
 const { join } = require("path");
 
 const dir = __dirname;
-const scripts = ["compaction.js", "dep-graph.js", "symbols.js"];
+const scripts = ["compaction.js", "dep-graph.js", "symbols.js", "parse-utils.js"];
 
 const manifest = {};
 for (const name of scripts) {
