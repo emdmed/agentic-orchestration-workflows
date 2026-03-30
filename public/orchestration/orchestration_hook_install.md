@@ -88,7 +88,7 @@ PROMPT_LOWER=$(echo "$PROMPT" | tr '[:upper:]' '[:lower:]')
 # Stop words: common English words unlikely to match code identifiers
 STOP_WORDS="the a an is are was were be been being to for in on it its this that with from by at of and or not but so if do does did has have had can could will would shall should may might must into than then also just only very too quite"
 # Signal words: action verbs used for classification (won't match code identifiers)
-SIGNAL_WORDS="fix broken error crash bug build create add implement new clean improve restructure rename refactor slow optimize performance speed review check merge pr pull request test spec coverage e2e unit document readme explain complex multi-step plan patterns conventions generate typo bump update change wording label what how does describe tell show look read view open print list"
+SIGNAL_WORDS="fix broken error crash bug build create add implement new clean improve restructure rename refactor slow optimize performance speed review check merge pr pull request test spec coverage e2e unit document readme explain qa smoke visual regression browser complex multi-step plan patterns conventions generate typo bump update change wording label what how does describe tell show look read view open print list"
 
 if [ -n "$PROMPT_LOWER" ]; then
   KEYWORDS=""
@@ -160,6 +160,7 @@ RULES=(
   "pr|${TECH_PREFIX}pr.md|pr pull request"
   "test|${TECH_PREFIX}test.md|test spec coverage e2e unit"
   "docs|${TECH_PREFIX}docs.md|document readme explain"
+  "qa|qa.md|qa smoke visual regression browser"
   "todo|todo.md|complex multi-step plan"
   "patterns-gen|patterns-gen.md|patterns conventions generate"
 )
@@ -277,7 +278,7 @@ GATED SEQUENCE: 1) Compact → 2) Grep compaction → 3) Read source (only for g
 HARD RULE: Do NOT Read source, Glob, or Explore until compaction is grepped and findings stated.
 NO CONTEXT REUSE: Each new task must grep compaction independently.
 BINDING: ⚙ [task] | [workflow + URL] | [simple/complex] | [tools]
-EXEMPT: ⚙ [task] | EXEMPT — only when: single file, 1-2 ops, zero architecture impact, no codebase search.
+EXEMPT: ⚙ [task] | EXEMPT — only when: single file, 1-2 ops, zero architecture impact, no codebase search. Use standard tools (Read/Glob/Grep), NOT Bash for file reading.
 COMPLETION: ✓ [task] | [workflow] | [files modified] | cleanup: [yes/no/n/a]
 PATTERNS: If .patterns/patterns.md exists, load and treat as binding constraints.
 --- END REMINDER ---
@@ -369,16 +370,18 @@ if [ -n "$MANIFEST" ] && echo "$MANIFEST" | jq empty 2>/dev/null; then
     fi
 
     if [ "$NEEDS_UPDATE" = true ]; then
-      curl -sL --max-time 5 "$CDN_BASE/tools/$script" -o "$LOCAL_SCRIPT" 2>/dev/null && \
-        UPDATES="${UPDATES}Updated script: $script. "
+      curl -sL --max-time 5 "$CDN_BASE/tools/$script" -o "$LOCAL_SCRIPT.tmp" 2>/dev/null && \
+        [ -s "$LOCAL_SCRIPT.tmp" ] && mv "$LOCAL_SCRIPT.tmp" "$LOCAL_SCRIPT" && \
+        UPDATES="${UPDATES}Updated script: $script. " || rm -f "$LOCAL_SCRIPT.tmp"
     fi
   done
 else
   # No manifest — ensure base scripts exist
   for s in compaction.js dep-graph.js symbols.js; do
     if [ ! -f "$SCRIPTS_DIR/$s" ]; then
-      curl -sL --max-time 5 "$CDN_BASE/tools/$s" -o "$SCRIPTS_DIR/$s" 2>/dev/null && \
-        UPDATES="${UPDATES}Downloaded script: $s. "
+      curl -sL --max-time 5 "$CDN_BASE/tools/$s" -o "$SCRIPTS_DIR/$s.tmp" 2>/dev/null && \
+        [ -s "$SCRIPTS_DIR/$s.tmp" ] && mv "$SCRIPTS_DIR/$s.tmp" "$SCRIPTS_DIR/$s" && \
+        UPDATES="${UPDATES}Downloaded script: $s. " || rm -f "$SCRIPTS_DIR/$s.tmp"
     fi
   done
 fi
@@ -744,7 +747,28 @@ Validate settings JSON:
 jq empty ~/.claude/settings.json && echo "settings: VALID JSON" || echo "settings: INVALID JSON"
 ```
 
-## Step 7 — Report
+## Step 7 — CDN availability check
+
+Verify all CDN endpoints the hooks depend on are reachable:
+
+```bash
+CDN="https://agentic-orchestration-workflows.vercel.app"
+cdn_ok=0; cdn_fail=0
+for path in \
+  orchestration/orchestration.md \
+  orchestration/workflows/react/feature.md \
+  orchestration/workflows/dotnet/feature.md \
+  orchestration/workflows/qa.md \
+  orchestration/workflows/todo.md \
+  tools/manifest.json \
+  tools/compaction.js tools/dep-graph.js tools/symbols.js tools/parse-utils.js; do
+  code=$(curl -sL --max-time 5 -o /dev/null -w '%{http_code}' "$CDN/$path")
+  if [ "$code" = "200" ]; then cdn_ok=$((cdn_ok+1)); else cdn_fail=$((cdn_fail+1)); echo "  FAIL ($code): $path"; fi
+done
+echo "CDN: $cdn_ok reachable, $cdn_fail failed"
+```
+
+## Step 8 — Report
 
 Print this summary table with actual results:
 

@@ -18,6 +18,7 @@
 | test, spec, coverage, e2e, unit | `test.md` |
 | document, README, explain | `docs.md` |
 | complex, multi-step, plan | `todo.md` |
+| qa, smoke test, visual check, regression, browser | `qa.md` |
 | patterns, conventions, generate patterns | `patterns-gen.md` |
 
 **Complexity:** 1-2 ops = simple | 3+ ops = complex (add `todo.md`)
@@ -37,6 +38,8 @@ EXEMPT only when ALL true: single file, 1-2 ops, zero architecture impact, obvio
 **NOT EXEMPT:** rename a component (dep-graph), change a shared util (blast-radius), add a prop (symbol lookup)
 
 ⚙ [task] | EXEMPT
+
+**EXEMPT tasks use standard tools** — `Read`, `Glob`, `Grep` are not gated. Do NOT substitute `Bash` for file reading.
 
 ## 1b. LOAD PATTERNS (REQUIRED)
 
