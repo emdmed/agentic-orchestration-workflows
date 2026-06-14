@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-const { readFileSync, writeFileSync } = require("fs");
-const { createHash } = require("crypto");
-const { join } = require("path");
+import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const dir = __dirname;
+const dir = dirname(fileURLToPath(import.meta.url));
 const scripts = ["compaction.js", "dep-graph.js", "symbols.js", "parse-utils.js"];
 
 const manifest = {};
@@ -12,5 +13,17 @@ for (const name of scripts) {
   manifest[name] = { sha256: createHash("sha256").update(content).digest("hex") };
 }
 
-writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
-console.log("manifest.json written");
+const manifestPath = join(dir, "manifest.json");
+const rendered = JSON.stringify(manifest, null, 2) + "\n";
+
+if (process.argv.includes("--check")) {
+  const current = readFileSync(manifestPath, "utf8");
+  if (current !== rendered) {
+    console.error("DRIFT: manifest.json is stale. Regenerate with: npm run manifest");
+    process.exit(1);
+  }
+  console.log("manifest.json in sync with tool sources");
+} else {
+  writeFileSync(manifestPath, rendered);
+  console.log("manifest.json written");
+}

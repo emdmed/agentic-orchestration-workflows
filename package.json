@@ -10,7 +10,8 @@
     "test:cdn": "bash tests/test-cdn.sh",
     "hooks:sync": "node scripts/sync-install-doc.js --write",
     "hooks:check": "node scripts/sync-install-doc.js --check",
-    "manifest": "node public/tools/generate-manifest.js"
+    "manifest": "node public/tools/generate-manifest.js",
+    "manifest:check": "node public/tools/generate-manifest.js --check"
   },
   "engines": {
     "node": ">=18"

@@ -9,24 +9,18 @@
 //   node compaction.js [path] [--json]
 
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'fs';
-import { execSync } from 'child_process';
 import { resolve, join, basename, dirname } from 'path';
 import {
   stripCommentsAndStrings, readUntilBalanced as _readUntilBalanced,
   extractBalancedGenerics, simplifyTypeAnnotation,
   consumeModifiers, detectLanguage,
+  getGitSha, getDateStamp, SKIP_DIRECTORIES,
+  JS_EXTENSIONS, PY_EXTENSIONS, CS_EXTENSIONS,
 } from './parse-utils.js';
-
-function getGitSha(dir) {
-  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
-  catch { return 'unknown'; }
-}
 
 // ── Parsers: Python ──
 
-const PYTHON_EXTENSIONS = ['.py'];
-
-const isPythonParseable = (path) => PYTHON_EXTENSIONS.some(ext => path.endsWith(ext));
+const isPythonParseable = (path) => PY_EXTENSIONS.some(ext => path.endsWith(ext));
 
 const extractPythonSkeleton = (code, filePath = '') => {
   const cleaned = stripCommentsAndStrings(code, 'py');
@@ -126,8 +120,6 @@ const formatPythonSkeleton = (skeleton) => {
 };
 
 // ── Parsers: C# ──
-
-const CS_EXTENSIONS = ['.cs'];
 
 const isCSharpParseable = (path) => CS_EXTENSIONS.some(ext => path.endsWith(ext));
 
@@ -412,7 +404,6 @@ const formatCSharpSkeleton = (skeleton) => {
 
 // ── Parsers: JS/TS (regex-based, zero dependencies) ──
 
-const JS_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
 const isJsParseable = (path) => JS_EXTENSIONS.some(ext => path.endsWith(ext));
 const isPascalCase = (name) => /^[A-Z][a-zA-Z0-9]*$/.test(name);
 
@@ -814,8 +805,9 @@ const formatOutput = (results) => {
 
 // ── Walker ──
 
-const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'target', 'build', '.next', '.turbo', 'out', 'coverage', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode', 'bin', 'obj']);
-
+// Note: this walker returns { path, relativePath } objects and filters via the
+// per-language predicates above, so it stays local rather than using the shared
+// collectFiles in parse-utils.js (which returns plain path strings).
 function collectFiles(dir, rootDir = dir, files = []) {
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return files; }
@@ -848,12 +840,6 @@ function compactProject(rootPath) {
   }
   const output = formatOutput(results);
   return { output, stats: { files: results.length, rawTokens, compactedTokens: estimateTokens(output) } };
-}
-
-function getDateStamp() {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
 }
 
 const args = process.argv.slice(2);

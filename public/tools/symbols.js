@@ -9,16 +9,11 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
 import {
   stripCommentsAndStrings, extractBalancedGenerics,
   consumeModifiers, detectLanguage,
+  getGitSha, collectFiles,
 } from './parse-utils.js';
-
-function getGitSha(dir) {
-  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
-  catch { return 'unknown'; }
-}
 
 // ── Config ──
 
@@ -30,34 +25,6 @@ const KIND = {
   TYPE: "Types",
   CONSTANT: "Constants",
 };
-
-const JS_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"];
-const PY_EXTENSIONS = [".py"];
-const CS_EXTENSIONS = [".cs"];
-const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS, ...CS_EXTENSIONS];
-const SKIP_DIRECTORIES = new Set([
-  "node_modules", "dist", ".git", "target", "build", ".next", ".turbo",
-  "out", "coverage", ".cache", "__pycache__", ".venv", "venv", ".idea", ".vscode",
-  "bin", "obj",
-]);
-
-// ── Walker ──
-
-function collectFiles(dir, rootDir = dir, files = []) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return files; }
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (!SKIP_DIRECTORIES.has(entry.name) && !entry.name.startsWith(".")) {
-        collectFiles(fullPath, rootDir, files);
-      }
-    } else if (entry.isFile() && ALL_EXTENSIONS.some(ext => fullPath.endsWith(ext))) {
-      files.push(fullPath);
-    }
-  }
-  return files;
-}
 
 // ── JS/TS extraction ──
 
