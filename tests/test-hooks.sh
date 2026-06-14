@@ -11,7 +11,9 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-HOOKS_DIR="$HOME/.claude/hooks"
+# Canonical hooks live in the repo. Allow override (e.g. to test an installed
+# copy at ~/.claude/hooks) via HOOKS_DIR; default to the repo's hooks/.
+HOOKS_DIR="${HOOKS_DIR:-$ROOT/hooks}"
 
 passed=0
 failed=0
