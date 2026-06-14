@@ -1,6 +1,10 @@
 // parse-utils.js — Shared parsing utilities for compaction/dep-graph/symbols tools
 // Zero dependencies — uses only built-in Node.js modules
 
+import { execSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 /**
  * Replace string literals, template literals, and comments with
  * whitespace-preserving placeholders. Keeps line numbers intact so
@@ -276,4 +280,70 @@ export function detectLanguage(filePath) {
   if (filePath.endsWith('.cs')) return 'cs';
   if (filePath.endsWith('.ts') || filePath.endsWith('.tsx') || filePath.endsWith('.mts') || filePath.endsWith('.cts')) return 'ts';
   return 'js';
+}
+
+// ── Shared infrastructure (file walking, git, timestamps) ──
+// Consolidated here so all three tools share one definition instead of three
+// drifting copies.
+
+/** Languages the tools can parse, grouped and combined. */
+export const JS_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'];
+export const PY_EXTENSIONS = ['.py'];
+export const CS_EXTENSIONS = ['.cs'];
+export const ALL_EXTENSIONS = [...JS_EXTENSIONS, ...PY_EXTENSIONS, ...CS_EXTENSIONS];
+
+/** Directories never worth walking. */
+export const SKIP_DIRECTORIES = new Set([
+  'node_modules', 'dist', '.git', 'target', 'build', '.next', '.turbo',
+  'out', 'coverage', '.cache', '__pycache__', '.venv', 'venv', '.idea', '.vscode',
+  'bin', 'obj',
+]);
+
+/**
+ * Current git HEAD sha for `dir`, or 'unknown' if not a repo.
+ * @param {string} dir
+ * @returns {string}
+ */
+export function getGitSha(dir) {
+  try { return execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf-8' }).trim(); }
+  catch { return 'unknown'; }
+}
+
+/**
+ * Filesystem-safe timestamp: `YYYY-MM-DD_HH-MM-SS` (local time).
+ * @returns {string}
+ */
+export function getDateStamp() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+}
+
+/**
+ * Recursively collect parseable source file paths under `dir`, skipping
+ * SKIP_DIRECTORIES and dot-directories. Returns absolute path strings.
+ *
+ * Note: compaction.js uses its own walker that returns `{ path, relativePath }`
+ * objects filtered by per-language predicates — it intentionally does not use
+ * this one.
+ *
+ * @param {string} dir
+ * @param {string} [rootDir]
+ * @param {string[]} [files]
+ * @returns {string[]}
+ */
+export function collectFiles(dir, rootDir = dir, files = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return files; }
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) {
+        collectFiles(fullPath, rootDir, files);
+      }
+    } else if (entry.isFile() && ALL_EXTENSIONS.some(ext => fullPath.endsWith(ext))) {
+      files.push(fullPath);
+    }
+  }
+  return files;
 }

@@ -70,14 +70,16 @@ test_case "rehydrate.sh exists and is executable" "[ -x '$HOOKS_DIR/rehydrate.sh
 echo ""
 echo "── Workflow files ──"
 
-for wf in feature bugfix refactor performance review pr test docs; do
+for wf in feature bugfix refactor performance review test docs; do
   test_case "react/$wf.md exists" "[ -f '$ROOT/public/orchestration/workflows/react/$wf.md' ]"
 done
 
-for wf in feature bugfix refactor performance review pr test docs; do
+for wf in feature bugfix refactor performance review test docs; do
   test_case "dotnet/$wf.md exists" "[ -f '$ROOT/public/orchestration/workflows/dotnet/$wf.md' ]"
 done
 
+# pr.md is language-agnostic and shared (like todo/patterns-gen)
+test_case "pr.md exists (shared)" "[ -f '$ROOT/public/orchestration/workflows/pr.md' ]"
 test_case "todo.md exists" "[ -f '$ROOT/public/orchestration/workflows/todo.md' ]"
 test_case "patterns-gen.md exists" "[ -f '$ROOT/public/orchestration/workflows/patterns-gen.md' ]"
 

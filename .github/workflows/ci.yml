@@ -19,10 +19,12 @@ jobs:
       - name: Run offline test suite
         run: npm run test:unit
 
-  # Non-blocking: depends on the Vercel deploy being live, which lags merges.
-  # Reported separately so a pending deploy never red-Xes a correct PR.
+  # Smoke-tests the LIVE production CDN, so it's only meaningful after merge +
+  # deploy. Runs on main and manual dispatch only — never on PRs, where prod is
+  # unchanged and a newly added/renamed endpoint would always (correctly) 404.
   cdn:
     name: CDN endpoint smoke tests
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
