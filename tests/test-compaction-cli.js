@@ -246,6 +246,48 @@ test('achieves significant token reduction', () => {
 
 teardown();
 
+// ── package.json & Markdown detection ──
+
+console.log('\n── Compaction CLI: package.json & Markdown ──');
+
+setup();
+
+test('indexes package.json name, scripts, and deps', () => {
+  const projDir = join(TMP, 'pkg-project');
+  mkdirSync(join(projDir, 'src'), { recursive: true });
+  writeFileSync(join(projDir, 'src', 'index.ts'), 'export const x = 1;');
+  writeFileSync(join(projDir, 'package.json'), JSON.stringify({
+    name: 'my-pkg',
+    version: '2.3.4',
+    scripts: { build: 'tsc', test: 'node test.js' },
+    dependencies: { react: '^18.0.0' },
+    devDependencies: { vite: '^5.0.0' },
+  }));
+
+  runCompaction(projDir);
+  const output = getCompactedFile(projDir);
+
+  assert.ok(output.includes('package.json'), 'should reference package.json');
+  assert.ok(output.includes('my-pkg@2.3.4'), 'should show name@version');
+  assert.ok(output.includes('build') && output.includes('test'), 'should list script names');
+  assert.ok(output.includes('react'), 'should list dependency names');
+  assert.ok(output.includes('vite'), 'should list devDependency names');
+});
+
+test('lists .md files by path only (no body)', () => {
+  const projDir = join(TMP, 'md-project');
+  mkdirSync(join(projDir, 'docs'), { recursive: true });
+  writeFileSync(join(projDir, 'docs', 'guide.md'), '# Guide\n\nSome **prose** that should not be parsed.\n');
+
+  runCompaction(projDir);
+  const output = getCompactedFile(projDir);
+
+  assert.ok(output.includes('docs/guide.md'), 'should list the .md path');
+  assert.ok(!output.includes('Some **prose**'), 'should not include markdown body');
+});
+
+teardown();
+
 // ── JSON output mode ──
 
 console.log('\n── Compaction CLI: JSON output ──');

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-// agentic-compaction v0.0.8
-// Single-file bundle — compact a JS/TS/Python project into a structural skeleton
+// agentic-compaction v0.0.9
+// Single-file bundle — compact a JS/TS/Python/C# project into a structural skeleton
+// Also indexes package.json (name/scripts/deps) and lists .md files by path
 // Zero dependencies — uses only built-in Node.js modules
 // Source: https://github.com/emdmed/agentic-compaction
 //
@@ -405,6 +406,34 @@ const formatCSharpSkeleton = (skeleton) => {
 // ── Parsers: JS/TS (regex-based, zero dependencies) ──
 
 const isJsParseable = (path) => JS_EXTENSIONS.some(ext => path.endsWith(ext));
+
+// ── package.json & Markdown ──
+
+const isPackageJson = (path) => basename(path) === 'package.json';
+const isMarkdownParseable = (path) => path.endsWith('.md');
+
+// package.json: keep structural keys only (names, not version ranges/values).
+const extractPackageJsonSkeleton = (code) => {
+  let pkg;
+  try { pkg = JSON.parse(code); } catch { return null; }
+  return {
+    name: pkg.name || null,
+    version: pkg.version || null,
+    scripts: pkg.scripts ? Object.keys(pkg.scripts) : [],
+    dependencies: pkg.dependencies ? Object.keys(pkg.dependencies) : [],
+    devDependencies: pkg.devDependencies ? Object.keys(pkg.devDependencies) : [],
+  };
+};
+
+const formatPackageJsonSkeleton = (s) => {
+  if (!s) return '';
+  const lines = [];
+  if (s.name) lines.push(`name: ${s.name}${s.version ? `@${s.version}` : ''}`);
+  if (s.scripts.length) lines.push(`scripts: ${s.scripts.join(', ')}`);
+  if (s.dependencies.length) lines.push(`dependencies: ${s.dependencies.join(', ')}`);
+  if (s.devDependencies.length) lines.push(`devDependencies: ${s.devDependencies.join(', ')}`);
+  return lines.join('\n');
+};
 const isPascalCase = (name) => /^[A-Z][a-zA-Z0-9]*$/.test(name);
 
 /**
@@ -796,7 +825,7 @@ const formatOutput = (results) => {
   for (const result of results) {
     lines.push(`## ${result.relativePath}`);
     if (result.skeleton) {
-      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : isCSharpParseable(result.relativePath) ? formatCSharpSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
+      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : isCSharpParseable(result.relativePath) ? formatCSharpSkeleton(result.skeleton) : isPackageJson(result.relativePath) ? formatPackageJsonSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
       if (output) lines.push(output);
     }
   }
@@ -814,7 +843,7 @@ function collectFiles(dir, rootDir = dir, files = []) {
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) { if (!SKIP_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) collectFiles(fullPath, rootDir, files); }
-    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath) || isCSharpParseable(fullPath))) {
+    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath) || isCSharpParseable(fullPath) || isPackageJson(fullPath) || isMarkdownParseable(fullPath))) {
       files.push({ path: fullPath, relativePath: fullPath.slice(rootDir.length + 1) });
     }
   }
@@ -835,6 +864,8 @@ function compactProject(rootPath) {
       if (isPythonParseable(file.path)) skeleton = extractPythonSkeleton(content, file.path);
       else if (isJsParseable(file.path)) skeleton = extractJsSkeleton(content, file.path);
       else if (isCSharpParseable(file.path)) skeleton = extractCSharpSkeleton(content, file.path);
+      else if (isPackageJson(file.path)) skeleton = extractPackageJsonSkeleton(content);
+      // Markdown: path-only — listed by relativePath with no skeleton.
       results.push({ relativePath: file.relativePath, skeleton });
     } catch {}
   }
@@ -849,7 +880,7 @@ let jsonOutput = false;
 for (const arg of args) {
   if (arg === '--json') jsonOutput = true;
   else if (arg === '--help' || arg === '-h') {
-    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python/C# project into a structural skeleton.\nZero dependencies — only requires Node.js.`);
+    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python/C# project into a structural skeleton.\nAlso indexes package.json (name/scripts/deps) and lists .md files by path.\nZero dependencies — only requires Node.js.`);
     process.exit(0);
   } else if (!arg.startsWith('-')) targetPath = arg;
 }
