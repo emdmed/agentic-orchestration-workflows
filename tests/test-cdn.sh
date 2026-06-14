@@ -61,7 +61,7 @@ test_case "install guide contains Step 1" "grep -q 'Step 1' '$TMPDIR_CDN/respons
 echo ""
 echo "── React workflow files ──"
 
-for wf in feature bugfix refactor performance review pr test docs; do
+for wf in feature bugfix refactor performance review test docs; do
   fetch "$CDN_BASE/orchestration/workflows/react/$wf.md"
   test_case "react/$wf.md reachable" "[ $? -eq 0 ]"
 done
@@ -69,7 +69,7 @@ done
 echo ""
 echo "── .NET workflow files ──"
 
-for wf in feature bugfix refactor performance review pr test docs; do
+for wf in feature bugfix refactor performance review test docs; do
   fetch "$CDN_BASE/orchestration/workflows/dotnet/$wf.md"
   test_case "dotnet/$wf.md reachable" "[ $? -eq 0 ]"
 done
@@ -77,7 +77,7 @@ done
 echo ""
 echo "── Shared workflow files ──"
 
-for wf in todo patterns-gen; do
+for wf in pr todo patterns-gen; do
   fetch "$CDN_BASE/orchestration/workflows/$wf.md"
   test_case "$wf.md reachable" "[ $? -eq 0 ]"
 done

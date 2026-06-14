@@ -95,7 +95,7 @@ RULES=(
   "refactor|${TECH_PREFIX}refactor.md|clean improve restructure rename refactor"
   "performance|${TECH_PREFIX}performance.md|slow optimize performance speed"
   "review|${TECH_PREFIX}review.md|review check merge"
-  "pr|${TECH_PREFIX}pr.md|pr pull request"
+  "pr|pr.md|pr pull request"
   "test|${TECH_PREFIX}test.md|test spec coverage e2e unit"
   "docs|${TECH_PREFIX}docs.md|document readme explain"
   "qa|qa.md|qa smoke visual regression browser"
