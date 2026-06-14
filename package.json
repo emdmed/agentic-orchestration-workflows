@@ -1,0 +1,17 @@
+{
+  "name": "agentic-orchestration-workflows",
+  "version": "2.0.0",
+  "private": true,
+  "description": "CDN-hosted orchestration protocol, workflows, and codebase-analysis tools for Claude Code",
+  "type": "module",
+  "scripts": {
+    "test": "bash tests/run-all.sh",
+    "test:unit": "SKIP_CDN=1 bash tests/run-all.sh",
+    "test:cdn": "bash tests/test-cdn.sh",
+    "manifest": "node public/tools/generate-manifest.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
