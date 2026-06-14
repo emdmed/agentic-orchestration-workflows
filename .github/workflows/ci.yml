@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Blocking: code correctness only. No network/deploy dependency.
+  unit:
+    name: Unit & integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run offline test suite
+        run: npm run test:unit
+
+  # Non-blocking: depends on the Vercel deploy being live, which lags merges.
+  # Reported separately so a pending deploy never red-Xes a correct PR.
+  cdn:
+    name: CDN endpoint smoke tests
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployed CDN endpoints
+        run: npm run test:cdn
