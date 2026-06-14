@@ -57,6 +57,10 @@ fi
 
 Create the following four files exactly as shown in `~/.claude/hooks/`.
 
+> **Maintainers:** the code blocks below are generated from the canonical hook
+> files in [`hooks/`](../../hooks/). Edit those, then run `npm run hooks:sync`.
+> `npm run hooks:check` (run in CI) fails if this doc drifts from `hooks/`.
+
 ### `~/.claude/hooks/classify.sh`
 
 ```bash
@@ -423,6 +427,8 @@ exit 0
 # Guards against accessing source files before grepping compaction.
 # Uses a session marker to track whether compaction was grepped.
 # Blocks Read/Glob/Grep/Task(Explore) on source paths until compaction is grepped.
+# The gate is tool-agnostic: a Grep-tool grep OR a Bash grep of the compaction
+# artifact both unlock it (harnesses without a Grep tool would otherwise deadlock).
 
 set -uo pipefail
 
@@ -558,6 +564,42 @@ JSON
       DENY_REASON="BLOCKED: You've grepped compaction but haven't found task-relevant results yet. Try grepping for terms from the user's request, or check the Entry Points section. Patterns tried so far: $TRIED. Need: 2+ distinct patterns or 1 matching a prompt keyword."
     fi
     deny
+  fi
+  exit 0
+fi
+
+# ─── Bash grep of compaction also satisfies the gate (tool-agnostic) ───
+# Some harnesses lack a Grep tool, or the agent greps via Bash. Recognize a
+# Bash grep of the compaction artifact and run it through the same quality gate,
+# otherwise source access stays blocked forever (deadlock).
+if [ "$TOOL_NAME" = "Bash" ]; then
+  CMD=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || CMD=""
+  # Only act on grep-family commands aimed at the compaction artifact
+  if echo "$CMD" | grep -qE '\b(grep|egrep|fgrep|rg|ag)\b' \
+     && echo "$CMD" | grep -qE 'compacted_|\.orchestration/tools'; then
+    # Only record once a compaction artifact actually exists
+    if ls "$PROJECT_DIR/.orchestration/tools/compacted_"*.md >/dev/null 2>&1; then
+      mkdir -p "$PROJECT_DIR/.orchestration/tools"
+      # Candidate search terms: quoted strings first
+      CANDIDATES=$(echo "$CMD" | grep -oE "'[^']+'|\"[^\"]+\"" | sed -E "s/^['\"]//; s/['\"]$//")
+      # Fallback: first bare word after a grep-family token (skipping flags)
+      if [ -z "$CANDIDATES" ]; then
+        CANDIDATES=$(echo "$CMD" | grep -oE '\b(grep|egrep|fgrep|rg|ag)\b[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[^[:space:]-][^[:space:]]*' \
+          | sed -E 's/^(grep|egrep|fgrep|rg|ag)[[:space:]]+//; s/^(-[^[:space:]]+[[:space:]]+)*//')
+      fi
+      while IFS= read -r cand; do
+        [ -z "$cand" ] && continue
+        # Skip paths / filenames / globs — not search terms
+        echo "$cand" | grep -qE 'compacted_|\.orchestration/tools|/|\.md$|\*' && continue
+        is_trivial_pattern "$cand" && continue
+        echo "$cand" >> "$PATTERNS_FILE"
+      done <<EOF
+$CANDIDATES
+EOF
+      if check_unlock_criteria; then
+        touch "$MARKER"
+      fi
+    fi
   fi
   exit 0
 fi

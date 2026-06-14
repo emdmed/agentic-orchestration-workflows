@@ -8,6 +8,8 @@
     "test": "bash tests/run-all.sh",
     "test:unit": "SKIP_CDN=1 bash tests/run-all.sh",
     "test:cdn": "bash tests/test-cdn.sh",
+    "hooks:sync": "node scripts/sync-install-doc.js --write",
+    "hooks:check": "node scripts/sync-install-doc.js --check",
     "manifest": "node public/tools/generate-manifest.js"
   },
   "engines": {

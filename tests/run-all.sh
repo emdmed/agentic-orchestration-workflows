@@ -38,6 +38,7 @@ echo ""
 # Unit tests (no orchestration layer needed)
 echo "━━━ WITHOUT orchestration layer (unit/integration) ━━━"
 
+run_suite "install-doc sync check" "node $ROOT/scripts/sync-install-doc.js --check"
 run_suite "parse-utils unit tests" "node $SCRIPT_DIR/test-parse-utils.js"
 run_suite "compaction CLI tests" "node $SCRIPT_DIR/test-compaction-cli.js"
 run_suite "dep-graph CLI tests" "node $SCRIPT_DIR/test-depgraph-cli.js"
