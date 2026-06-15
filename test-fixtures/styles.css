@@ -1,0 +1,20 @@
+/* Header region — comment with .fake-class and #fake-id should be ignored */
+#app {
+  color: #fff;            /* hex color must NOT be read as an id */
+  background: #1a2b3c;
+}
+
+.btn,
+.btn-primary {
+  border: 1px solid #ccc;
+  background-image: url(./icons/#hash-in-url.svg);
+}
+
+#main-nav .nav-item:hover {
+  text-decoration: underline;
+}
+
+@media screen and (max-width: 600px) {
+  .btn { padding: 0.5rem; }
+  #app { font-size: 14px; }
+}

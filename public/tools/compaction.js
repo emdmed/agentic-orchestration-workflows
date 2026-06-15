@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-// agentic-compaction v0.0.9
+// agentic-compaction v0.0.10
 // Single-file bundle — compact a JS/TS/Python/C# project into a structural skeleton
-// Also indexes package.json (name/scripts/deps) and lists .md files by path
+// Also indexes package.json (name/scripts/deps), CSS/SCSS/LESS (ids/classes),
+// and lists .md files by path
 // Zero dependencies — uses only built-in Node.js modules
 // Source: https://github.com/emdmed/agentic-compaction
 //
@@ -434,6 +435,46 @@ const formatPackageJsonSkeleton = (s) => {
   if (s.devDependencies.length) lines.push(`devDependencies: ${s.devDependencies.join(', ')}`);
   return lines.join('\n');
 };
+// ── CSS / SCSS / LESS ──
+
+const CSS_EXTENSIONS = ['.css', '.scss', '.sass', '.less'];
+const isCssParseable = (path) => CSS_EXTENSIONS.some(ext => path.endsWith(ext));
+
+// Collect id (#foo) and class (.foo) selector names. Scans only selector
+// preludes — the text before each `{` — so declaration values like `#fff`
+// hex colors or `url(...)` inside a rule block are never read as selectors.
+// Brace-depth-agnostic by design: nested SCSS/LESS rules still resolve because
+// every prelude is delimited by `{`, `}`, or `;`.
+const extractCssSkeleton = (code) => {
+  const noComments = code
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')   // /* block */ comments
+    .replace(/\/\/[^\n]*/g, ' ');        // // line comments (scss/less)
+
+  const ids = new Set();
+  const classes = new Set();
+  let prelude = '';
+  for (const ch of noComments) {
+    if (ch === '{') {
+      for (const m of prelude.matchAll(/#(-?[A-Za-z_][\w-]*)/g)) ids.add(m[1]);
+      for (const m of prelude.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) classes.add(m[1]);
+      prelude = '';
+    } else if (ch === '}' || ch === ';') {
+      prelude = '';
+    } else {
+      prelude += ch;
+    }
+  }
+  return { ids: [...ids].sort(), classes: [...classes].sort() };
+};
+
+const formatCssSkeleton = (s) => {
+  if (!s) return '';
+  const lines = [];
+  if (s.ids.length) lines.push(`ids: ${s.ids.join(', ')}`);
+  if (s.classes.length) lines.push(`classes: ${s.classes.join(', ')}`);
+  return lines.join('\n');
+};
+
 const isPascalCase = (name) => /^[A-Z][a-zA-Z0-9]*$/.test(name);
 
 /**
@@ -796,7 +837,9 @@ const formatOutput = (results) => {
   // Entry points: files ranked by exported symbol count (top 5)
   const ranked = results
     .map(r => {
-      if (!r.skeleton) return { path: r.relativePath, exports: 0 };
+      // Stylesheets and path-only files are not code entry points. (Skipping
+      // CSS also avoids its `classes` array being counted as exports below.)
+      if (!r.skeleton || isCssParseable(r.relativePath)) return { path: r.relativePath, exports: 0 };
       const s = r.skeleton;
       let exports = 0;
       // JS/TS: count export markers
@@ -825,7 +868,7 @@ const formatOutput = (results) => {
   for (const result of results) {
     lines.push(`## ${result.relativePath}`);
     if (result.skeleton) {
-      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : isCSharpParseable(result.relativePath) ? formatCSharpSkeleton(result.skeleton) : isPackageJson(result.relativePath) ? formatPackageJsonSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
+      const output = isPythonParseable(result.relativePath) ? formatPythonSkeleton(result.skeleton) : isCSharpParseable(result.relativePath) ? formatCSharpSkeleton(result.skeleton) : isPackageJson(result.relativePath) ? formatPackageJsonSkeleton(result.skeleton) : isCssParseable(result.relativePath) ? formatCssSkeleton(result.skeleton) : formatBabelSkeleton(result.skeleton);
       if (output) lines.push(output);
     }
   }
@@ -843,7 +886,7 @@ function collectFiles(dir, rootDir = dir, files = []) {
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
     if (entry.isDirectory()) { if (!SKIP_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) collectFiles(fullPath, rootDir, files); }
-    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath) || isCSharpParseable(fullPath) || isPackageJson(fullPath) || isMarkdownParseable(fullPath))) {
+    else if (entry.isFile() && (isJsParseable(fullPath) || isPythonParseable(fullPath) || isCSharpParseable(fullPath) || isPackageJson(fullPath) || isMarkdownParseable(fullPath) || isCssParseable(fullPath))) {
       files.push({ path: fullPath, relativePath: fullPath.slice(rootDir.length + 1) });
     }
   }
@@ -865,6 +908,7 @@ function compactProject(rootPath) {
       else if (isJsParseable(file.path)) skeleton = extractJsSkeleton(content, file.path);
       else if (isCSharpParseable(file.path)) skeleton = extractCSharpSkeleton(content, file.path);
       else if (isPackageJson(file.path)) skeleton = extractPackageJsonSkeleton(content);
+      else if (isCssParseable(file.path)) skeleton = extractCssSkeleton(content);
       // Markdown: path-only — listed by relativePath with no skeleton.
       results.push({ relativePath: file.relativePath, skeleton });
     } catch {}
@@ -880,7 +924,7 @@ let jsonOutput = false;
 for (const arg of args) {
   if (arg === '--json') jsonOutput = true;
   else if (arg === '--help' || arg === '-h') {
-    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python/C# project into a structural skeleton.\nAlso indexes package.json (name/scripts/deps) and lists .md files by path.\nZero dependencies — only requires Node.js.`);
+    console.log(`Usage: node compaction.js [path] [--json]\n\nCompact a JS/TS/Python/C# project into a structural skeleton.\nAlso indexes package.json (name/scripts/deps), CSS/SCSS/LESS (ids/classes),\nand lists .md files by path.\nZero dependencies — only requires Node.js.`);
     process.exit(0);
   } else if (!arg.startsWith('-')) targetPath = arg;
 }

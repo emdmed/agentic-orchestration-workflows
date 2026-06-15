@@ -288,6 +288,44 @@ test('lists .md files by path only (no body)', () => {
 
 teardown();
 
+// ── CSS id/class detection ──
+
+console.log('\n── Compaction CLI: CSS selectors ──');
+
+setup();
+
+test('extracts ids and classes from a css file', () => {
+  const projDir = join(TMP, 'css-project');
+  mkdirSync(join(projDir, 'src'), { recursive: true });
+  const fixture = readFileSync(join(FIXTURES, 'styles.css'), 'utf-8');
+  writeFileSync(join(projDir, 'src', 'styles.css'), fixture);
+
+  runCompaction(projDir);
+  const output = getCompactedFile(projDir);
+
+  assert.ok(output.includes('styles.css'), 'should reference styles.css');
+  // ids
+  assert.ok(/ids:.*\bapp\b/.test(output), 'should extract id #app');
+  assert.ok(/ids:.*main-nav/.test(output), 'should extract id #main-nav');
+  // classes
+  assert.ok(/classes:.*\bbtn\b/.test(output), 'should extract class .btn');
+  assert.ok(/classes:.*btn-primary/.test(output), 'should extract class .btn-primary');
+  assert.ok(/classes:.*nav-item/.test(output), 'should extract class .nav-item');
+});
+
+test('does not read hex colors, urls, or comments as selectors', () => {
+  const projDir = join(TMP, 'css-project');
+  const output = getCompactedFile(projDir);
+
+  assert.ok(!output.includes('fff'), 'hex color #fff must not appear as id');
+  assert.ok(!output.includes('1a2b3c'), 'hex color must not appear as id');
+  assert.ok(!output.includes('hash-in-url'), 'url fragment must not appear as id');
+  assert.ok(!output.includes('fake-class'), 'commented class must not appear');
+  assert.ok(!output.includes('fake-id'), 'commented id must not appear');
+});
+
+teardown();
+
 // ── JSON output mode ──
 
 console.log('\n── Compaction CLI: JSON output ──');
